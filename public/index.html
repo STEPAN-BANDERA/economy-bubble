@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faustus Ledger</title>
+<meta name="description" content="Free Path of Exile 1 and 2 Currency Exchange dashboard: top picks, cross-currency flips, vendor recipes, prices, spreads and odd trades from GGG's hourly exchange history, plus crafting plans priced at live exchange rates.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0705">
+<meta name="referrer" content="no-referrer">
+<link rel="canonical" href="https://ledger.poedle.xyz/">
+<link rel="preload" href="fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#tabs">Skip to the tables</a>
+<header class="bar">
+  <h1 class="brand">Faustus Ledger</h1>
+  <form class="controls" id="controls" onsubmit="return false" aria-label="Market">
+    <label>Realm
+      <select id="realm">
+        <option value="">PoE 1 (PC)</option>
+        <option value="poe2">PoE 2</option>
+        <option value="xbox">PoE 1 (Xbox)</option>
+        <option value="sony">PoE 1 (PlayStation)</option>
+      </select>
+    </label>
+    <label>League <select id="league"></select></label>
+    <label>Private league <input type="search" id="plName" placeholder="Name or PL number" title="Type a private league's name (or its PL number) and press Enter: the page looks back up to a week for it"></label>
+    <label>Window
+      <select id="window">
+        <option value="1">Last hour</option>
+        <option value="6">6 hours</option>
+        <option value="24">24 hours</option>
+        <option value="72">3 days</option>
+        <option value="168">7 days</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="showPrivate"> Private leagues</label>
+    <button type="button" class="ghost" id="open-formulas">Formulas</button>
+  </form>
+</header>
+
+<main>
+  <section class="hero" id="hero" aria-live="polite">
+    <p class="status" id="status">Loading exchange data…</p>
+  </section>
+
+  <nav class="tabs" role="tablist" id="tabs" aria-label="Views">
+    <button role="tab" id="tab-picks" data-tab="picks" aria-controls="panel" aria-selected="true">Top picks</button>
+    <button role="tab" id="tab-flips" data-tab="flips" aria-controls="panel">Flips</button>
+    <button role="tab" id="tab-routes" data-tab="routes" aria-controls="panel">Routes</button>
+    <button role="tab" id="tab-recipes" data-tab="recipes" aria-controls="panel">Recipes</button>
+    <button role="tab" id="tab-prices" data-tab="prices" aria-controls="panel">Prices</button>
+    <button role="tab" id="tab-spreads" data-tab="spreads" aria-controls="panel">Spreads</button>
+    <button role="tab" id="tab-odd" data-tab="odd" aria-controls="panel">Odd trades</button>
+    <button role="tab" id="tab-craft" data-tab="craft" aria-controls="panel">Crafting</button>
+    <button role="tab" id="tab-craftr" data-tab="craftr" aria-controls="panel">Crafting (Ruthless)</button>
+    <button role="tab" id="tab-leagueend" data-tab="leagueend" aria-controls="panel">Legendary league-end flip</button>
+    <button role="tab" id="tab-lab" data-tab="lab" aria-controls="panel">Lab</button>
+    <button role="tab" id="tab-guide" data-tab="guide" aria-controls="panel">Guide</button>
+  </nav>
+
+  <section class="panel" id="panel" role="tabpanel" tabindex="-1"></section>
+</main>
+
+<footer class="foot">
+  <p>Faustus Ledger is a free fan project, not affiliated with or endorsed by Grinding Gear Games. Path of Exile, its item names, icons and game data belong to Grinding Gear Games.
+    Market data comes from GGG's public <a href="https://www.pathofexile.com/developer/docs/reference#currencyexchange">Currency Exchange API</a>, hourly and at least an hour old.</p>
+  <p>Free, no ads, no accounts, no cookies, no tracking. Nothing about you is collected. Your settings and stars stay in your own browser. Item icons load from GGG's image server; beast and Recombinator icons are copies of images from the community <a href="https://www.poewiki.net/">PoE Wiki</a>.</p>
+  <p>Prices are estimates from past trades, not advice. Check the live ratio in game before you trade. <a href="https://github.com/STEPAN-BANDERA/economy-bubble">Open source</a> under the MIT license.</p>
+</footer>
+
+<div id="toasts" aria-live="polite"></div>
+
+<dialog id="drawer" aria-labelledby="drawer-title">
+  <button id="drawer-close" class="close" aria-label="Close">×</button>
+  <div id="drawer-body"></div>
+</dialog>
+<script src="app.js" type="module"></script>
+</body>
+</html>
