@@ -1,0 +1,16 @@
+{
+  "name": "faustus-ledger",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev ./public",
+    "deploy": "wrangler pages deploy ./public --project-name faustus-ledger",
+    "items:build": "python3 scripts/fetch_exchange_items.py poe1 poe2",
+    "craft:build": "python3 scripts/fetch_craft_data.py && python3 scripts/fetch_ninja_targets.py"
+  },
+  "devDependencies": {
+    "pathofexile-dat": "15.2.0",
+    "wrangler": "^4"
+  }
+}

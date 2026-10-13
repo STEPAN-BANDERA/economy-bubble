@@ -1,0 +1,8 @@
+node_modules/
+.cache/
+.wrangler/
+__pycache__/
+.env
+.dev.vars
+.DS_Store
+public/data/craft/
