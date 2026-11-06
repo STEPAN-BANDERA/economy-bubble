@@ -1,0 +1,13 @@
+#!/bin/sh
+# Runs the crafting regression test (scripts/craft_regression.mjs) when a commit touches the
+# crafting engine or its fixtures. Enable once per clone: git config core.hooksPath .githooks
+# (Skip in an emergency with git commit --no-verify.)
+engine_files='^public/(craft\.js|craft-worker\.js)$|^scripts/craft_regression\.mjs$|^scripts/craft-regression/'
+if git diff --cached --name-only | grep -Eq "$engine_files"; then
+  if [ ! -f public/data/craft/index-poe1.json ]; then
+    echo "pre-commit: crafting data missing (npm run craft:build); skipping the crafting regression test." >&2
+    exit 0
+  fi
+  echo "pre-commit: the crafting engine changed, running the regression test (about 2 minutes)..." >&2
+  npm run --silent test:craft || exit 1
+fi

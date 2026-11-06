@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The economy bubble: a gold dollar sign floating in a soap/water bubble. -->
+  <defs>
+    <radialGradient id="water" cx="0.4" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#2b6d80"/>
+      <stop offset="0.7" stop-color="#123642"/>
+      <stop offset="1" stop-color="#0b1c24"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#bff0ff"/>
+      <stop offset="0.5" stop-color="#7fc8e0"/>
+      <stop offset="1" stop-color="#c79bf0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="28.5" fill="url(#water)" stroke="url(#rim)" stroke-width="3"/>
+  <path d="M13 26 A20 20 0 0 1 25 13" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="3.5" stroke-linecap="round"/>
+  <g fill="none" stroke="#e8bf6a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 13 V51"/>
+    <path d="M41 22.5 C39 19.5 36 18.5 32 18.5 C27 18.5 23.5 21 23.5 25 C23.5 29 27.5 30.5 32 32 C36.5 33.5 40.5 35 40.5 39.5 C40.5 43.5 37 45.5 32 45.5 C27.5 45.5 24.5 44 22.5 41"/>
+  </g>
+</svg>

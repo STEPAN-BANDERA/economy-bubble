@@ -1,0 +1,53 @@
+# Saves poe.ninja's prices for the Farming cards' items to the `snapshots` branch, so the
+# running league can have real item prices at earlier stages (poe.ninja has no daily history,
+# and its dumps only appear after a league ends). See scripts/snapshot_ninja_prices.py.
+#
+# It commits only to `snapshots`, so main's history stays clean and nothing deploys by itself.
+# GitHub turns scheduled workflows off after 60 days without repository activity, and emails first.
+name: ninja-snapshots
+
+on:
+  schedule:
+    # Off the hour because GitHub delays or drops runs at busy times. The script skips all but
+    # one run a day once a league is two weeks old.
+    - cron: '17 */6 * * *'
+  workflow_dispatch: # the "Run workflow" button, for testing
+
+permissions:
+  contents: write # to push to the snapshots branch; nothing else
+
+concurrency:
+  group: ninja-snapshots # two runs at once would race to push
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false # this copy only reads; the snapshots checkout pushes
+
+      - name: Check out the snapshots branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: snapshots
+          path: snapshot-data
+
+      - name: Save a snapshot
+        run: python3 scripts/snapshot_ninja_prices.py --output snapshot-data
+
+      - name: Commit it, if there is one
+        working-directory: snapshot-data
+        run: |
+          git add snapshots
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --quiet -m "Snapshot poe.ninja prices"
+          git push --quiet origin snapshots
