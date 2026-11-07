@@ -1,0 +1,172 @@
+{
+"league": "Allflame",
+"takenAt": "2026-11-07T06:09:16Z",
+"unit": "Chaos Orbs per item, as listed on poe.ninja at that time",
+"source": "poe.ninja economy API, https://poe.ninja/economy",
+"items": {
+"Ashes of the Stars": {
+"chaos": 90.5,
+"listings": 968
+},
+"Black Mórrigan": {
+"chaos": 1495,
+"listings": 793
+},
+"Craicic Croaker": {
+"chaos": 999.4,
+"listings": 5857
+},
+"Crown of the Inward Eye": {
+"chaos": 40.0,
+"listings": 256
+},
+"Crystallised Omniscience": {
+"chaos": 5.4,
+"listings": 328
+},
+"Dawnbreaker": {
+"chaos": 3.0,
+"listings": 8406
+},
+"Echoes of Creation": {
+"chaos": 40.0,
+"listings": 237
+},
+"Farric Tiger Alpha": {
+"chaos": 100.0,
+"listings": 168
+},
+"Fenumal Plagued Arachnid": {
+"chaos": 337.9,
+"listings": 900
+},
+"Forbidden Flame": {
+"chaos": 50.0,
+"listings": 5334
+},
+"Forbidden Flesh": {
+"chaos": 64.4,
+"listings": 5303
+},
+"Hands of the High Templar": {
+"chaos": 350.0,
+"listings": 278
+},
+"Hateforge": {
+"chaos": 2492,
+"listings": 29
+},
+"Impossible Escape": {
+"chaos": 10.0,
+"listings": 4454
+},
+"Mahuxotl's Machination": {
+"chaos": 71.0,
+"listings": 95
+},
+"Malachai's Mark": {
+"chaos": 93.2,
+"listings": 210
+},
+"Manastorm": {
+"chaos": 130.0,
+"listings": 448
+},
+"Melding of the Flesh": {
+"chaos": 1495,
+"listings": 493
+},
+"Nightmare Map": {
+"chaos": 33.8,
+"listings": 27703
+},
+"Nimis": {
+"chaos": 24920,
+"listings": 162
+},
+"Oriath's End": {
+"chaos": 80.0,
+"listings": 1685
+},
+"Primal Crushclaw": {
+"chaos": 30.0,
+"listings": 276
+},
+"Progenesis": {
+"chaos": 19936,
+"listings": 207
+},
+"Ravenous Passion": {
+"chaos": 6.2,
+"listings": 534
+},
+"Shaper's Touch": {
+"chaos": 13.0,
+"listings": 331
+},
+"Starforge": {
+"chaos": 18939,
+"listings": 15
+},
+"Sublime Vision": {
+"chaos": 498.4,
+"listings": 1932
+},
+"The Annihilating Light": {
+"chaos": 15.0,
+"listings": 231
+},
+"The Dark Seer": {
+"chaos": 498.4,
+"listings": 163
+},
+"The Eternity Shroud": {
+"chaos": 30.0,
+"listings": 205
+},
+"The Saviour": {
+"chaos": 996.8,
+"listings": 146
+},
+"Thread of Hope": {
+"chaos": 10.0,
+"listings": 6391
+},
+"Viridi's Veil": {
+"chaos": 18.4,
+"listings": 402
+},
+"Vivid Vulture": {
+"chaos": 40.0,
+"listings": 362
+},
+"Voidforge": {
+"chaos": 24920,
+"listings": 14
+},
+"Wild Brambleback": {
+"chaos": 82.5,
+"listings": 365
+},
+"Wild Bristle Matron": {
+"chaos": 95.0,
+"listings": 557
+},
+"Wild Hellion Alpha": {
+"chaos": 63.2,
+"listings": 291
+},
+"Wraithlord": {
+"chaos": 30.5,
+"listings": 271
+},
+"Yaomac's Accord": {
+"chaos": 11.6,
+"listings": 210
+},
+"Yoke of Suffering": {
+"chaos": 140.0,
+"listings": 822
+}
+}
+}
