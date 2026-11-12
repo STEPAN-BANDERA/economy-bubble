@@ -33,6 +33,78 @@ def minor():
 
 
 STATEMENTS = [
+    # ---------- defensive self buffs (not auras, not guard skills) ----------
+    # Arctic Armour: less physical and fire damage from hits while stationary. The buff lasts 2.5-4.4 seconds after you
+    # move, so it holds more often than "stationary" alone (condition "stationaryLingering").
+    (r"^Buff grants " + NUMBER + r"% less Physical Damage taken from Hits while stationary$",
+     [more("damageTaken", ["physical"], value="-#", condition="stationaryLingering")]),
+    (r"^Buff grants " + NUMBER + r"% less Fire Damage taken from Hits while stationary$",
+     [more("damageTaken", ["fire"], value="-#", condition="stationaryLingering")]),
+    # Frost Shield: a shield with up to 4 stages of 910 life at gem level 20 takes a share of each hit before your life
+    # or energy shield; it gains stages only while you lose energy shield (public/buildgen.js, frostShieldPool).
+    (r"^Frost Shield has " + NUMBER + r" maximum Life per Stage$", [flat("frostShieldPool", value="4*#")]),
+    (r"^Maximum 4 Stages$", [minor()]),
+    (r"of Damage dealt to you or Allies in Area with Hits by Enemies (?:in|outside) Area is taken from Frost Shield", [minor()]),
+    (r"^Gains 1 Stage every 0.3 seconds while you are losing Energy Shield$", [minor()]),
+    (r"^You lose " + NUMBER + r" Energy Shield per second$", [minor()]),
+    # ---------- attributes ----------
+    # Two-attribute lines give those two only; they read as "+# to all Attributes" (the gear solver meets attribute
+    # requirements, so the third one mattered).
+    (r"^\+" + NUMBER + r" to Strength and Dexterity$", [flat("strength"), flat("dexterity")]),
+    (r"^\+" + NUMBER + r" to Strength and Intelligence$", [flat("strength"), flat("intelligence")]),
+    (r"^\+" + NUMBER + r" to Dexterity and Intelligence$", [flat("dexterity"), flat("intelligence")]),
+    # ---------- bloodlines ----------
+    # Breachlord: the gem levels need four Foulborn uniques worn and the resistance lines all rings of one base, which
+    # the generator doesn't plan, so they get no credit (the gem levels read as a generic condition, half on).
+    (r"if at least \d+ Foulborn Unique Items are Equipped$", [minor()]),
+    (r"^Your Hits ignore Enemy Monster (?:Lightning|Cold|Fire) Resistances if all Equipped Rings are", [minor()]),
+    # Oath of the Maji (Warden of the Maji): each line wants a slot without gems. Builds take it for gloves and boots
+    # left empty (life and movement speed), giving up their eight sockets (public/buildgen.js, socketsOf). The body
+    # holds the six-link and the helmet a four-link, so those two lines aren't counted.
+    (r"^Defences from Equipped Body Armour are doubled if it has no Socketed Gems$", [minor()]),
+    (r"^\+50% to all Elemental Resistances if you have an Equipped Helmet with no Socketed Gems$", [minor()]),
+    (r"^" + NUMBER + r"% increased Maximum Life if you have Equipped Gloves with no Socketed Gems$",
+     [{"kind": "increased", "stat": "life", "tags": [], "value": "#", "subject": "self", "condition": None}, flag("gemlessGloves")]),
+    (r"^" + NUMBER + r"% increased Movement Speed if you have Equipped Boots with no Socketed Gems$",
+     [{"kind": "increased", "stat": "movementSpeed", "tags": [], "value": "#", "subject": "self", "condition": None}, flag("gemlessBoots")]),
+    # ---------- damage from defences ----------
+    # Overcapped fire resistance: gear is taken to cap resistances exactly, so the build's own "+% to Fire Resistance"
+    # lines are what goes over the cap (public/buildgen.js, overcappedFire).
+    (r"^Armour is increased by Overcapped Fire Resistance$", [flag("armourFromOvercappedFire")]),
+    (r"^Damage Penetrates Fire Resistance equal to your Overcapped Fire Resistance", [flag("penetrationFromOvercappedFire")]),
+    # Tasalio: fire resistance lines also count for cold and lightning at half their value, which frees gear the
+    # solver would spend on resistances (public/buildgear.js).
+    (r"^Modifiers to Fire Resistance also apply to Cold and Lightning Resistances at 50% of their Value$", [flag("fireResistanceShared")]),
+    # "perDefence" lines scale with the build's own life, energy shield, armour or evasion (public/buildgen.js reads
+    # them after its defences): "as" is how the line counts ("increased" or "added" damage, or "base" for a skill
+    # whose base damage is a share of the pool), "per" how much of the defence one "value" needs.
+    # Righteous Fire: its base damage is 70% of maximum life plus 70% of maximum energy shield a second.
+    (r"^Deals " + NUMBER + r"% of your Maximum Life as Base Fire Damage per second$",
+     [{"kind": "perDefence", "stat": "damage", "as": "base", "defence": "life", "per": 100, "value": "#", "tags": ["fire"], "subject": "self", "condition": None}]),
+    (r"^Deals " + NUMBER + r"% of your Maximum Energy Shield as Base Fire Damage per second$",
+     [{"kind": "perDefence", "stat": "damage", "as": "base", "defence": "energyShield", "per": 100, "value": "#", "tags": ["fire"], "subject": "self", "condition": None}]),
+    # ...and it burns you for 90% of life and 70% of energy shield a second, which fire resistance reduces: why RF
+    # builds stack maximum fire resistance and regeneration.
+    (r"^You Burn for " + NUMBER + r"% of your Maximum Life per second as Fire Damage$", [flat("selfBurnLife", value="#")]),
+    (r"^You Burn for " + NUMBER + r"% of your Maximum Energy Shield per second as Fire Damage$", [flat("selfBurnEnergyShield", value="#")]),
+    # Ephemeral Edge: added maximum lightning damage of 10-15% of energy shield, so 0 to 12.5% of it, about 6.25 per
+    # 100 energy shield on average.
+    (r"^Attacks with this Weapon have Added Maximum Lightning Damage equal to " + NUMBER + r"% of Player's Maximum Energy Shield$",
+     [{"kind": "perDefence", "stat": "damage", "as": "added", "defence": "energyShield", "per": 100, "value": 6.25, "tags": ["lightning", "attack"], "subject": "self", "condition": None}]),
+    # Dreamfeather and Replica Dreamfeather: attack damage per 450 evasion or armour. It read as 3 stacks.
+    (r"^1% increased Attack Damage per 450 Evasion Rating$",
+     [{"kind": "perDefence", "stat": "damage", "as": "increased", "defence": "evasion", "per": 450, "value": 1, "tags": ["attack"], "subject": "self", "condition": None}]),
+    (r"^1% increased Attack Damage per 450 Armour$",
+     [{"kind": "perDefence", "stat": "damage", "as": "increased", "defence": "armour", "per": 450, "value": 1, "tags": ["attack"], "subject": "self", "condition": None}]),
+    # Explosions on kill clear packs; they were a flat 4% more damage. Hinekora's (10% of kills for 250% of their life)
+    # is the Chieftain's.
+    (r"^Enemies you or your Totems Kill have " + NUMBER + r"% chance to Explode", [flag("explodeOnKill")]),
+    # Ramako: -20% fire resistance against damage over time near you while stationary, so fire damage over time gains
+    # as if it penetrated; it was 10% more fire damage of any kind.
+    (r"^Nearby Enemy Monsters' Fire Resistance against Damage over Time is " + NUMBER + r"% while you are Stationary$",
+     [{"kind": "resistance", "stat": "resistance", "tags": ["fire", "dot"], "value": "#", "subject": "enemy", "condition": "stationary"}]),
+    # Righteous Fire's buff: more spell damage while it burns, its own burning included.
+    (r"^Grants " + NUMBER + r"% more Spell Damage$", [more("damage", ["spell"])]),
     # ---------- keystones that change how damage works ----------
     (r"^Your Critical Strike Chance is Lucky$", [more("critChance", value=40)]),  # lucky crit at ~40-60% chance
     (r"^Your Damage with Critical Strikes is Lucky$", [more("damage", value=10, condition="onCrit")]),
@@ -88,7 +160,17 @@ STATEMENTS = [
     (r"^Projectiles have " + NUMBER + r"% chance to be able to Chain when colliding with terrain$", [minor()]),
     (r"^Projectile Barrages have no spread$", [more("damage", ["projectile"], value=20)]),
     (r"^Projectiles are fired in random directions$", [more("damage", ["projectile"], value=-20)]),
-    (r"^Every Rage also grants 1% increased Attack Speed$", [{"kind": "increased", "stat": "attackSpeed", "tags": ["attack"], "value": 20, "subject": "self", "condition": "rage"}]),
+    # Crave the Slaughter. Rage itself is modelled by the engine (public/buildgen.js, rageOf): this line makes each Rage
+    # also give attack speed, so it scales with Rage effect like the damage. The small passive before it gains 1 Rage
+    # on Attack Hit (3.2x patch notes: "The small Passive prior now causes you to Gain 1 Rage on Attack Hit"), and the
+    # generator only picks notables, so the notable carries that Rage source too.
+    (r"^Every Rage also grants 1% increased Attack Speed$", [flag("rageGrantsAttackSpeed"), flag("rageSource", ["attack"])]),
+    # Rage sources: a build with one hits often enough to keep its Rage up (public/buildgen.js, RAGE_ASSUMED).
+    (r"^Gain " + NUMBER + r" Rage on (?:Attack )?Hit$", [flag("rageSource", ["attack"])]),
+    (r"^Gain " + NUMBER + r" Rage on Melee (?:Weapon )?Hit$", [flag("rageSource", ["melee"])]),
+    (r"^Gain " + NUMBER + r" Rage on Hit with Axes or Swords$", [flag("rageSource", ["attack"])]),
+    (r"^Gain " + NUMBER + r" Rage on Hit with Axes$", [flag("rageSource", ["axe"])]),
+    (r"^Gain " + NUMBER + r" Rage when Hit by an Enemy$", [flag("rageSource")]),
     (r"^Gain Accuracy Rating equal to twice your Strength$", [flat("accuracy", value=400)]),
     (r"^Inherent Bonuses from Dual Wielding are doubled$", [more("speed", ["attack"], value=10, condition="dualWield"), flag("needsDualWield")]),
     (r"^You count as Dual Wielding while you are Unencumbered$", [flag("unencumberedDualWield")]),
@@ -119,8 +201,23 @@ STATEMENTS = [
     (r"^You can have an additional Brand Attached to an Enemy$", [more("damage", ["brand"], value=40)]),
     (r"^When your Traps Trigger, your nearby Traps also Trigger$", [more("damage", ["trap"], value=10)]),
     (r"^Mines Hinder Enemies near them", [minor()]),
-    (r"^Impales you inflict last " + NUMBER + r" additional Hit$", [more("damage", ["physical", "attack"], value=15)]),
-    (r"^Inflict " + NUMBER + r" additional Impales on Enemies you Impale$", [more("damage", ["physical", "attack"], value=20)]),
+    # Impale is modelled by the engine (public/buildgen.js, impaleFactor): these lines are inputs to it, the hits an
+    # Impale lasts and the Impales each impaling hit inflicts. They were a flat "more damage" for every physical
+    # attack, impale or not. Lines that hold "when you impale" take the build's chance to impale (condition "impale").
+    (r"^Impales you inflict last " + NUMBER + r" additional Hits?$", [flat("impaleHits", value="#")]),
+    (r"^Inflict " + NUMBER + r" additional Impales? on Enemies you Impale$", [flat("impaleExtra", value="#")]),
+    # Master of Metal: armour while impaling, and added damage per Impale on the enemy. Five Impales are on an enemy
+    # you keep impaling, so 6 to 12 per Impale is about 45 in all.
+    (r"^If you've Impaled an Enemy Recently, you\s+and nearby Allies have \+" + NUMBER + r" to Armour$",
+     [flat("armour", value="#", condition="impale")]),
+    (r"^You and nearby Allies deal \d+ to \d+ added Physical Damage for\s+each Impale on Enemy$",
+     [{"kind": "added", "stat": "damage", "tags": ["physical"], "value": 45, "subject": "self", "condition": "impale"}]),
+    # Unstoppable Hero: only Fortification above the usual 20 counts, which needs gear or passives that raise the
+    # maximum. The generator doesn't plan those, so the lines get no credit; they read as 3 stacks before.
+    (r"^" + NUMBER + r"% more Armour and Evasion Rating per Fortification above 20$",
+     [more("armour", value="#", condition="fortificationAbove20"), more("evasion", value="#", condition="fortificationAbove20")]),
+    (r"^" + NUMBER + r"% increased Attack Speed per Fortification above 20$",
+     [{"kind": "increased", "stat": "attackSpeed", "tags": ["attack"], "value": "#", "subject": "self", "condition": "fortificationAbove20"}]),
     (r"^When your Hits Impale Enemies, also Impale other Enemies near them$", [minor()]),
     (r"^Hits that would Ignite instead Scorch$", [flag("noIgniteDamage")]),
     (r"^You can inflict an additional Scorch on each Enemy$", [minor()]),
@@ -150,6 +247,12 @@ STATEMENTS = [
      [{"kind": "socketedSupport", "stat": "#name", "tags": [], "value": 20, "subject": "self", "condition": None}]),
     (r"^Triggers Level 20 (Primal Aegis|Summon Triggerbots) when Allocated$", [flag("ascendancyGrant")]),
     (r"^Transfiguration of Mind$", [flag("transfigurationOfMind")]),
+    (r"^Transfiguration of Body$", [flag("transfigurationOfBody")]),
+    # Petrified Blood (its gem text): life sits at low life, and the lower half of it loses less to hits at once. The
+    # amounts are the level 20 ones, in PETRIFIED_* in public/buildgen.js; the life cost line changes nothing we score.
+    (r"^Life Recovery other than Flasks cannot Recover Life to above Low Life$", [flag("lifeCappedAtLowLife")]),
+    (r"^When taking Damage from Hits, " + NUMBER + r"% of Life loss below half Life is Prevented", [flag("lowerHalfLifeProtected")]),
+    (r"^Skills gain a Base Life Cost equal to " + NUMBER + r"% of Base Mana Cost while not on Low Life$", [minor()]),
 
     # ---------- keystones and ascendancies that change defences ----------
     (r"^Removes all mana", [flag("bloodMagic")]),
@@ -182,8 +285,8 @@ STATEMENTS = [
     (r"^" + NUMBER + r"% of Maximum Mana is Converted to twice that much Armour$", [flag("manaToArmour")]),
     (r"^Gain " + NUMBER + r"% of Maximum Mana as Extra Maximum Energy Shield$", [flat("manaToEnergyShield")]),
     (r"^Gain Maximum Life instead of Maximum Energy Shield from Equipped Armour Items$", [flag("esToLife")]),
-    # Radiant Faith gives 25% / 10% of reserved mana. The generator assumes about 1000 mana (MANA_ASSUMED in
-    # public/buildgen.js), nearly all reserved by auras, so about 250 armour and 100 energy shield. (It was 3000 /
+    # Radiant Faith gives 25% / 10% of reserved mana. A Guardian running auras reserves about 1000 mana (its level 92
+    # mana, intelligence and some gear: CHARACTER_MANA in public/buildgen.js), so about 250 armour and 100 energy shield. (It was 3000 /
     # 300, which needs 12000 reserved mana and pushed Guardian to the top for most skills.)
     (r"^Grants Armour equal to " + NUMBER + r"% of your Reserved Mana", [flat("armour", value=250)]),
     (r"^Grants maximum Energy Shield equal to " + NUMBER + r"% of your Reserved Mana", [flat("energyShield", value=100)]),
@@ -194,7 +297,19 @@ STATEMENTS = [
     (r"^Gain 50% Chance to Block from Equipped Shield instead of the Shield's value$", [flat("block", value=25), flag("needsShield")]),
     (r"^Chance to Block Attack or Spell Damage is Lucky if you've Blocked Recently$", [flat("block", value=10)]),
     (r"^You take " + NUMBER + r"% of Damage from Blocked Hits$", [minor()]),
-    (r"^Armour from Equipped Body Armour is doubled$", [{"kind": "increased", "stat": "armour", "tags": [], "value": 60, "subject": "self", "condition": None}]),
+    # Unbreakable: the body armour holds about half of a life build's base armour, so doubling it is about 50% more
+    # armour (after increases, since it doubles the body's local total). It was 60% increased, which the tree's
+    # increases dilute.
+    (r"^Armour from Equipped Body Armour is doubled$", [more("armour", value=50)]),
+    # Untiring: life back from physical damage armour stopped. Against a boss hitting a 5,000-life armour build for a
+    # few thousand physical every two seconds with half of it prevented, 1.5% of ten seconds' prevented damage a
+    # second is about 1.5% of life a second.
+    (r"^" + NUMBER + r"% of Physical Damage prevented from Hits in the past 10 seconds is Regenerated as Life per second$",
+     [flat("lifeRegen", value=1.5)]),
+    # Undeniable: 500 flat, twice Strength (about 300) and the level's own accuracy put a Juggernaut near 2,300
+    # accuracy, so 1% attack speed per 150 is about 15%.
+    (r"^1% increased Attack Speed per 150 Accuracy Rating$",
+     [{"kind": "increased", "stat": "attackSpeed", "tags": ["attack"], "value": 15, "subject": "self", "condition": None}]),
     (r"^Take " + NUMBER + r"% less damage from Critical Strikes$", [minor()]),
     (r"^Take " + NUMBER + r"% more damage from Non-Critical Strikes$", [flat("damageTakenLess", value=-10)]),
     (r"^Take 50% less Damage over Time if you've started taking Damage over Time in the past second$", [minor()]),
@@ -215,7 +330,8 @@ STATEMENTS = [
     (r"^You are Blind$", [minor()]),
     (r"^You are Unaffected by Bleeding while Leeching$", [minor()]),
     (r"^Every 4 seconds, remove Curses and Ailments from you$", [minor()]),
-    (r"^Every 4 seconds, Regenerate " + NUMBER + r"% of Life over one second$", [flat("lifeRegen", value=8)]),
+    # "Every 4 seconds, Regenerate X% of Life over one second" is read by mechanics_vocabulary.py's special shapes as its
+    # average over a fight (X / 4 a second); it was a flat 8% a second here, without a reason.
     (r"^While not on Full Life, Sacrifice " + NUMBER + r"% of Mana per Second to Recover that much Life$", [flag("manaToLifeRecovery")]),
     (r"^Life Recoup also recovers Mana$", [minor()]),
     (r"^Life Recovery from Flasks also applies to Energy Shield$", [minor()]),
@@ -356,7 +472,12 @@ STATEMENTS = [
     (r"^Socketed Skills deal Double Damage$", [more("damage", value=100, condition="socketedSkill")]),
 
     # ---------- support gems: what the supported skill gains (subject "supported") ----------
-    (r"^Supported Skills gain Added (?:Lightning|Cold) Damage equal to " + NUMBER + r"% of (?:Unreserved|Reserved) Maximum Mana$",
+    # Archmage: its added damage grows with unreserved mana. 35% more at 1000 unreserved mana (our estimate), scaled by
+    # the build's own unreserved mana (condition "unreservedMana", public/buildgen.js), so auras reserving most of the
+    # mana leave it little. The reserved-mana form (Manaforged Arrows' kin) keeps the fixed figure.
+    (r"^Supported Skills gain Added (?:Lightning|Cold) Damage equal to " + NUMBER + r"% of Unreserved Maximum Mana$",
+     [more("damage", ["spell"], value=35, condition="unreservedMana", subject="supported"), flag("scalesWithMana", subject="supported")]),
+    (r"^Supported Skills gain Added (?:Lightning|Cold) Damage equal to " + NUMBER + r"% of Reserved Maximum Mana$",
      [more("damage", ["spell"], value=35, subject="supported"), flag("scalesWithMana", subject="supported")]),
     (r"^Supported Skills gain Base Mana Cost equal to", [minor()]),
     (r"^\+?" + NUMBER + r"% to Quality of Supported Skill Gems$", [minor()]),

@@ -194,6 +194,10 @@ def compact_effect(found):
         compact["socketed"] = True
     if found.get("skill"):
         compact["skill"] = found["skill"]
+    # "perDefence" lines (damage from a defence): how they count, which defence, and how much of it one value needs.
+    for key in ("as", "defence", "per"):
+        if found.get(key) is not None:
+            compact[key] = found[key]
     return compact
 
 
@@ -228,7 +232,14 @@ def damage_types_of(types, effects, stat_text):
     return found
 
 
-def is_main_skill(types):
+# Skills typed as a Buff that are still a build's main damage: Righteous Fire burns enemies for a share of your life
+# and energy shield, and whole builds are made around it.
+MAIN_BUFF_SKILL_IDS = {"RighteousFire"}
+
+
+def is_main_skill(types, skill_id=None):
+    if skill_id in MAIN_BUFF_SKILL_IDS:
+        return True
     if not (MAIN_SKILL_TYPES & set(types)):
         return False
     if NOT_MAIN_SKILL_TYPES & set(types):
@@ -241,8 +252,8 @@ def is_main_skill(types):
 BUFF_SKILL_TYPES = {"Aura", "Herald", "Hex", "AppliesCurse", "Banner"}
 
 
-def is_buff_skill(types):
-    return not is_main_skill(types) and bool(BUFF_SKILL_TYPES & set(types))
+def is_buff_skill(types, skill_id=None):
+    return not is_main_skill(types, skill_id) and bool(BUFF_SKILL_TYPES & set(types))
 
 
 def read_gems(gems, rules, coverage):
@@ -277,7 +288,7 @@ def read_gems(gems, rules, coverage):
         types = rule.get("types", [])
         weapons = rule.get("weapons", [])
         stat_text = gem["statText"]
-        if is_buff_skill(types):
+        if is_buff_skill(types, gem["skillId"]):
             stat_text = "\n".join(line for line in split_lines(stat_text) if is_buff_line(line))
         effects, unread = effects_of(stat_text, "skill", "level", coverage)
         skills[gem["name"]] = {
@@ -285,7 +296,7 @@ def read_gems(gems, rules, coverage):
             "types": types, "minionTypes": rule.get("minionTypes", []), "weapons": weapons,
             "tags": skill_tags(types, weapons),
             "damageTypes": damage_types_of(types, effects, gem["statText"]),
-            "main": is_main_skill(types),
+            "main": is_main_skill(types, gem["skillId"]),
             "cannotBeSupported": rule["cannotBeSupported"],
             "attributes": gem["requires"], "level": gem["levelRequirement"],
             "castTime": gem["castTime"],
@@ -324,6 +335,44 @@ def read_passives(passives, class_of_ascendancy, coverage):
         effects, unread = effects_of(node["statText"], "notable", "roll", coverage)
         notables.append({"name": node["name"], "effects": effects})
     return ascendancies, keystones, notables
+
+
+def read_bloodlines(graphs, coverage):
+    """Each bloodline's notables as pieces the generator can pick: a notable's effects with those of the small
+    passives on the path to it, and its cost in ascendancy points (the nodes on that path, the free start left out).
+    Leaves past a notable (skills it grants, jewel-conditional smalls) aren't offered."""
+    bloodlines = {}
+    for bloodline, nodes in graphs.items():
+        start = next((node_id for node_id, node in nodes.items() if node["start"]), None)
+        if start is None:
+            continue
+        parent = {start: None}
+        queue = [start]
+        while queue:
+            current = queue.pop(0)
+            for other in nodes[current]["out"]:
+                if other in nodes and other not in parent:
+                    parent[other] = current
+                    queue.append(other)
+        notables = []
+        for node_id, node in nodes.items():
+            if not node["notable"] or node_id not in parent:
+                continue
+            path = []
+            step = node_id
+            while step is not None and step != start:
+                path.append(step)
+                step = parent[step]
+            effects = []
+            for step in reversed(path):
+                step_effects, unread = effects_of(nodes[step]["statText"], "bloodline", "roll", coverage)
+                effects.extend(step_effects)
+            if effects:
+                notables.append({"name": node["name"], "points": len(path), "effects": effects})
+        if notables:
+            notables.sort(key=lambda notable: notable["name"])
+            bloodlines[bloodline] = {"notables": notables}
+    return bloodlines
 
 
 def read_flasks(flasks, coverage):
@@ -366,6 +415,50 @@ def read_jewels(jewel_mods, large_clusters, coverage):
     return {"mods": mods, "largeClusters": clusters}
 
 
+# GGG's tree export is drawn at 1.2 times the game's jewel radius units since 3.16: the game files' Large radius 1500
+# reaches 1800 tree units. (Path of Building's radius tables, 960 / 1440 / 1800 for 800 / 1200 / 1500, agree; it is
+# a check, not the source.)
+TREE_UNITS_PER_RADIUS_UNIT = 1.2
+# Timeless jewels conquer passives in a Large radius.
+TIMELESS_RADIUS = "Large"
+
+
+def read_timeless(timeless_keystones, timeless_jewels, radii, tree_keystone_names, coverage):
+    """The keystones timeless jewels grant, grouped by jewel: a timeless jewel in a socket turns a keystone in its
+    radius into one of its conquerors' keystones. Keystones of a family no jewel here brings (the Abyss ones) and
+    keystones none of whose lines could be read are left out, and so are keystones the tree has anyway (the wiki
+    files Glancing Blows, Eternal Youth, The Agnostic and Wind Dancer under a family too)."""
+    jewel_of_family = {jewel["family"]: jewel["name"] for jewel in timeless_jewels}
+    jewels = {}
+    for keystone in timeless_keystones:
+        jewel_name = jewel_of_family.get(keystone["jewel"])
+        if jewel_name is None or keystone["name"] in tree_keystone_names:
+            continue
+        effects, unread = effects_of(keystone["statText"], "timeless keystone", "roll", coverage)
+        if not effects:
+            continue
+        entry = jewels.setdefault(jewel_name, {"name": jewel_name, "family": keystone["jewel"], "keystones": []})
+        entry["keystones"].append({"name": keystone["name"], "effects": effects})
+    radius = radii.get(TIMELESS_RADIUS)
+    return {"radius": round(radius * TREE_UNITS_PER_RADIUS_UNIT) if radius else None,
+            "jewels": sorted(jewels.values(), key=lambda jewel: jewel["name"])}
+
+
+# "Has no Sockets", "Has 1 Socket", "Has 6 Sockets": a unique with a fixed number of sockets (Kaom's Heart has none,
+# so no six-link in the body). These are local lines, left out of the effects, so they are kept as a field.
+FIXED_SOCKETS = re.compile(r"^Has (no|\d+) Sockets?$", flags=re.IGNORECASE)
+
+
+def fixed_sockets_of(text):
+    for line in split_lines(text):
+        match = FIXED_SOCKETS.match(line.strip())
+        if match:
+            if match.group(1).lower() == "no":
+                return 0
+            return int(match.group(1))
+    return None
+
+
 def read_uniques(uniques, coverage):
     read = []
     for unique in uniques:
@@ -373,11 +466,15 @@ def read_uniques(uniques, coverage):
             continue
         combined = "\n".join(part for part in (unique["implicitText"], unique["explicitText"]) if part)
         effects, unread = effects_of(combined, "unique", "roll", coverage, unique["category"])
-        read.append({
+        entry = {
             "name": unique["name"], "category": unique["category"], "base": unique["base"],
             "level": unique["levelRequirement"], "requirements": unique["requirements"],
             "effects": effects,
-        })
+        }
+        sockets = fixed_sockets_of(combined)
+        if sockets is not None:
+            entry["sockets"] = sockets
+        read.append(entry)
     return read
 
 
@@ -441,8 +538,11 @@ def main():
     skills, supports, missing_rules = read_gems(sources["gems"], rules, coverage)
     ascendancies, keystones, notables = read_passives(sources["passives"], sources["classOfAscendancy"], coverage)
     uniques = read_uniques(sources["uniques"], coverage)
+    bloodlines = read_bloodlines(sources["bloodlineGraphs"], coverage)
     flasks = read_flasks(sources["flasks"], coverage)
     jewels = read_jewels(sources["jewelMods"], sources["largeClusters"], coverage)
+    tree_keystone_names = {keystone["name"] for keystone in keystones}
+    timeless = read_timeless(sources["timelessKeystones"], sources["timelessJewels"], sources["jewelRadii"], tree_keystone_names, coverage)
     tree = read_tree_graph(sources["treeGraph"], coverage)
     tree["patch"] = sources["patch"]
     write_utf8(TREE_OUT, json.dumps(tree, ensure_ascii=False, separators=(",", ":")))
@@ -454,13 +554,13 @@ def main():
         "patch": patch, "built": time.strftime("%Y-%m-%d"),
         "source": sources["source"] + "; effects read by scripts/mechanics_vocabulary.py",
         "coverage": summary,
-        "skills": skills, "supports": supports, "ascendancies": ascendancies,
+        "skills": skills, "supports": supports, "ascendancies": ascendancies, "bloodlines": bloodlines,
         "keystones": keystones, "notables": notables, "uniques": uniques, "flasks": flasks,
-        "weaponBases": sources["weaponBases"], "jewels": jewels,
+        "weaponBases": sources["weaponBases"], "jewels": jewels, "timeless": timeless,
     }
     write_utf8(OUT, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     print(f"patch {patch}: {len(skills)} skills ({sum(1 for s in skills.values() if s['main'])} main), "
-          f"{len(supports)} supports, {len(ascendancies)} ascendancies, {len(keystones)} keystones, "
+          f"{len(supports)} supports, {len(ascendancies)} ascendancies, {len(bloodlines)} bloodlines, {len(keystones)} keystones, "
           f"{len(notables)} notables, {len(uniques)} uniques -> {OUT.relative_to(ROOT)} ({OUT.stat().st_size // 1024} KB)")
     if missing_rules:
         print(f"  no game-file rules for {len(missing_rules)} gems: {', '.join(missing_rules[:10])}")

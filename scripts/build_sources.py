@@ -464,6 +464,38 @@ def fetch_jewel_mods(refresh):
     return mods
 
 
+# The timeless jewels themselves: each unique "Historic" jewel says which conquerors it brings ("Passives in radius
+# are Conquered by the Karui"), which is the keystones' alternate tree. The wiki's words for the families differ a
+# little from the alternate tree names.
+TIMELESS_FAMILY_OF_WORD = {"Karui": "Karui", "Vaal": "Vaal", "Templars": "Templar", "Eternal": "Eternal",
+                           "Maraketh": "Maraketh", "Kalguur": "Kalguuran"}
+
+
+def fetch_timeless_jewels(refresh):
+    rows = cargo_rows(
+        "timeless-jewels", tables="items", fields=["items.name", "items.stat_text"],
+        where='items.class_id="Jewel" AND items.rarity_id="unique" AND items.stat_text LIKE "%Historic%"',
+        order_by="items.name", refresh=refresh)
+    jewels = []
+    for row in rows:
+        match = re.search(r"Conquered by the (\w+)", row.get("stat_text") or "")
+        if match and match.group(1) in TIMELESS_FAMILY_OF_WORD:
+            jewels.append({"name": wiki_text(row.get("name")), "family": TIMELESS_FAMILY_OF_WORD[match.group(1)]})
+    return jewels
+
+
+# Jewel radii from the game files (PassiveJewelRadii): Small 800, Medium 1200, Large 1500, in the game's units.
+JEWEL_RADIUS_TABLES = [{"name": "PassiveJewelRadii", "columns": ["ID", "RingOuterRadius", "RingInnerRadius", "Radius"]}]
+
+
+def fetch_jewel_radii():
+    tables = export_tables("poe1-jewel-radii", JEWEL_RADIUS_TABLES)[1]
+    radii = {}
+    for row in tables["PassiveJewelRadii"]:
+        radii[row["ID"]] = row["Radius"]
+    return radii
+
+
 def fetch_timeless_keystones(refresh):
     rows = cargo_rows(
         "timeless-keystones", tables="passive_skills",
@@ -584,6 +616,32 @@ def tree_masteries(tree, nodes):
     return masteries, mastery_options
 
 
+def bloodline_graphs(tree):
+    """Each bloodline's nodes, small ones included, with their links: {bloodline name: {node id: node}}. A bloodline
+    shares the ascendancy points (3.28 patch notes), so what a notable costs is the path to it from the start."""
+    ascendancy_ids = set()
+    for character_class in tree["classes"]:
+        for ascendancy in character_class.get("ascendancies", []):
+            ascendancy_ids.add(ascendancy["id"])
+    bloodline_name = {}
+    for bloodline in tree.get("alternate_ascendancies", []):
+        bloodline_name[bloodline["id"]] = bloodline["name"]
+    graphs = {}
+    for node_id, node in tree["nodes"].items():
+        owner = node.get("ascendancyName")
+        if not owner or owner in ascendancy_ids or not node.get("name"):
+            continue
+        name = bloodline_name.get(owner, owner)
+        graphs.setdefault(name, {})[str(node_id)] = {
+            "name": node["name"],
+            "statText": "\n".join(node.get("stats", [])),
+            "notable": bool(node.get("isNotable")),
+            "start": bool(node.get("isAscendancyStart")),
+            "out": [str(other) for other in node.get("out", [])],
+        }
+    return graphs
+
+
 def load_build_sources(refresh=False):
     patch, skill_tables = export_tables("poe1-skills", SKILL_TABLES)
     tree = fetch_tree(refresh)
@@ -596,6 +654,8 @@ def load_build_sources(refresh=False):
         "uniques": normalise_uniques(fetch_uniques(refresh)),
         "passives": passives,
         "timelessKeystones": fetch_timeless_keystones(refresh),
+        "timelessJewels": fetch_timeless_jewels(refresh),
+        "jewelRadii": fetch_jewel_radii(),
         "flasks": normalise_flasks(*fetch_flasks(refresh)),
         "weaponBases": best_weapon_bases(fetch_weapon_bases(refresh)),
         "jewelMods": fetch_jewel_mods(refresh),
@@ -603,4 +663,5 @@ def load_build_sources(refresh=False):
         "classOfAscendancy": class_of_ascendancy,
         "skillTables": skill_tables,
         "treeGraph": tree_graph(tree),
+        "bloodlineGraphs": bloodline_graphs(tree),
     }

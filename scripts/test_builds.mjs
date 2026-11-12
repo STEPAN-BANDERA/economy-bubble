@@ -224,6 +224,40 @@ if (fs.existsSync(mechanicsFile) && fs.existsSync(generatedFile)) {
   const arcSupports = firstArc.build.supports.map(entry => entry.support.name);
   check('generator: Arc gets lightning supports', arcSupports.some(name => /Lightning/.test(name)), arcSupports.join(', '));
 
+  // Reservation: auras take their share of mana after reservation efficiency, Blood Magic takes it from life, and
+  // Mind over Matter only has the unreserved mana to draw on.
+  const wrath = named(index.buffs, 'Wrath');
+  const reserving = { ...firstArc.build, buffs: [wrath], keystones: [], uniques: [] };
+  const reservingEvaluation = generator.evaluateBuild(reserving);
+  check('reservation: an aura leaves less mana unreserved', reservingEvaluation.unreservedMana < reservingEvaluation.mana * 0.6,
+    `${Math.round(reservingEvaluation.unreservedMana)} of ${Math.round(reservingEvaluation.mana)}`);
+  const efficient = { ...reserving, uniques: [named(index.uniques, "Alpha's Howl")] };
+  check('reservation: efficiency frees mana', generator.evaluateBuild(efficient).unreservedMana > reservingEvaluation.unreservedMana);
+  const bloodMagic = named(index.keystones, 'Blood Magic');
+  const onLife = generator.evaluateBuild({ ...reserving, keystones: [bloodMagic] });
+  const onLifeNoAura = generator.evaluateBuild({ ...reserving, keystones: [bloodMagic], buffs: [] });
+  check('reservation: Blood Magic reserves life and has no mana', onLife.mana === 0 && onLife.life < onLifeNoAura.life * 0.6,
+    `${Math.round(onLife.life)} with Wrath, ${Math.round(onLifeNoAura.life)} without`);
+  // Eternal Blessing: one aura with no reservation; beside it, only buffs that reserve life.
+  const blessedWrath = named(index.buffs, 'Wrath (Eternal Blessing)');
+  const herald = named(index.buffs, 'Herald of Thunder');
+  const petrified = named(index.buffs, 'Petrified Blood');
+  check('blessing: Eternal Blessing aura reserves nothing', Boolean(blessedWrath) && blessedWrath.reservation === 0 && blessedWrath.sockets === 2);
+  const blessed = { ...reserving, buffs: [blessedWrath] };
+  check('blessing: no mana-reserving buff beside it', !generator.canAddBuff(blessed, herald));
+  check('blessing: Petrified Blood (life) beside it', generator.canAddBuff(blessed, petrified));
+  check('blessing: not beside the same aura reserved', !generator.canAddBuff({ ...reserving, buffs: [wrath] }, blessedWrath));
+  check('blessing: with Blood Magic a herald reserves life beside it', generator.canAddBuff({ ...blessed, keystones: [bloodMagic] }, herald));
+  // Petrified Blood: life reserved, the rest held at low life, the lower half protected.
+  const withPetrified = generator.evaluateBuild({ ...reserving, buffs: [petrified] });
+  const withoutBuffs = generator.evaluateBuild({ ...reserving, buffs: [] });
+  check('petrified blood: life held at low life', withPetrified.life < withoutBuffs.life * 0.8 && withPetrified.life > withoutBuffs.life * 0.5,
+    `${Math.round(withPetrified.life)} of ${Math.round(withoutBuffs.life)}`);
+
+  // Cloudflare Pages takes files up to 25 MiB; the deploy fails on a bigger generated file.
+  const generatedBytes = fs.statSync(generatedFile).size;
+  check('generator: the generated file fits Cloudflare Pages (25 MiB)', generatedBytes < 25 * 1024 * 1024, generatedBytes + ' bytes');
+
   // Every stored build is one a character could actually wear.
   let duplicates = 0;
   let impossibleHands = 0;
@@ -257,15 +291,14 @@ if (fs.existsSync(mechanicsFile) && fs.existsSync(generatedFile)) {
     if (build.ascendancy.notables.length > 12 && build.notables.length > 2) {
       borrowedTooMany += 1;
     }
-    let reserved = 0;
     let curses = 0;
     for (const buff of build.buffs) {
-      reserved += buff.reservation;
       if (buff.kind === 'curse') {
         curses += 1;
       }
     }
-    if (reserved > 100) {
+    // The share after reservation efficiency, stored with the build (public/buildgen.js, RESERVABLE_PERCENT 90).
+    if ((stored.reserved ?? 0) > 90.05 || (stored.reservedLife ?? 0) > 90.05) {
       overReserved += 1;
     }
     if (curses > 1) {
@@ -423,6 +456,179 @@ if (fs.existsSync(mechanicsFile) && fs.existsSync(generatedFile)) {
   check('generator: favourite ascendancy in its top 3 for at least 25% of skills', calibration >= 0.25, 'got ' + calibration);
 } else {
   console.log('(no generated builds yet: run npm run builds:build for the generator checks)');
+}
+
+// ---------- the build planner: tags, stages, limits, agents (public/buildtags.js, buildstages.js, buildsearch.js) ----------
+const plannerMechanicsFile = path.join(buildsDirectory, 'mechanics-poe1.json');
+const plannerTreeFile = path.join(buildsDirectory, 'tree-poe1.json');
+if (fs.existsSync(plannerMechanicsFile) && fs.existsSync(plannerTreeFile)) {
+  const tags = await import(pathToFileURL(path.join(root, 'public', 'buildtags.js')).href);
+  const stages = await import(pathToFileURL(path.join(root, 'public', 'buildstages.js')).href);
+  const search = await import(pathToFileURL(path.join(root, 'public', 'buildsearch.js')).href);
+  const mechanics = JSON.parse(fs.readFileSync(plannerMechanicsFile, 'utf8'));
+  const quickIndex = generator.prepareMechanics(mechanics);
+  const fullIndex = generator.prepareMechanics(mechanics, JSON.parse(fs.readFileSync(plannerTreeFile, 'utf8')));
+  const named = (list, name) => list.find(entry => entry.name === name);
+  const fireball = named(quickIndex.skills, 'Fireball');
+  const elementalist = named(quickIndex.ascendancies, 'Elementalist');
+
+  // Tags: from our own reading of each piece's effects; a piece fits when one of its effects can matter.
+  const coldSpells = { name: 'test cold', effects: [{ kind: 'increased', stat: 'damage', tags: ['cold', 'spell'], value: 40 }] };
+  const plainLife = { name: 'test life', effects: [{ kind: 'flat', stat: 'life', value: 50 }] };
+  const axeAttacks = { name: 'test axe', effects: [{ kind: 'increased', stat: 'damage', tags: ['attack', 'axe'], value: 20 }] };
+  check('tags: a piece is tagged from its effects', JSON.stringify(tags.tagsOfPiece(coldSpells)) === '["cold","spell"]' && JSON.stringify(tags.tagsOfPiece(plainLife)) === '["generic"]');
+  const fireballBuild = generator.bestBuildFor(fireball, elementalist, quickIndex).build;
+  const fireballContext = generator.buildContext(fireballBuild);
+  check('tags: cold spell damage does not fit a fire spell', !tags.pieceFits(coldSpells, fireballContext));
+  check('tags: axe attack damage does not fit a spell', !tags.pieceFits(axeAttacks, fireballContext));
+  check('tags: life fits any build', tags.pieceFits(plainLife, fireballContext));
+  // A skipped piece must add nothing: the tags only spare the planner work, they never change a plan. Its score
+  // stays the same, or drops to 0 when the piece can't be used at all (a wand on a shield build).
+  let skippedThatMattered = 0;
+  const fireballScore = generator.evaluateBuild(fireballBuild).score;
+  for (const unique of quickIndex.uniques) {
+    if (tags.pieceFits(unique, fireballContext)) {
+      continue;
+    }
+    const withUnique = generator.evaluateBuild({ ...fireballBuild, uniques: [...fireballBuild.uniques, unique] });
+    const unusable = withUnique.problems.length > 0;
+    if (withUnique.score !== fireballScore && !unusable) {
+      skippedThatMattered += 1;
+    }
+  }
+  check('tags: a unique the tags skip never changes the score of a build that can use it', skippedThatMattered === 0, skippedThatMattered + ' did');
+  tags.tagIndex(fullIndex);
+  check('tags: every tree node and unique is tagged', [...fullIndex.tree.nodes.values()].every(node => Array.isArray(node.tags)) && fullIndex.uniques.every(unique => Array.isArray(unique.tags)));
+
+  // Buff effect: "Hatred has 30% increased Aura Effect" scales Hatred's lines, and only Hatred's; "while affected by
+  // Hatred" holds only when the build runs Hatred.
+  const hatred = quickIndex.buffs.find(buff => buff.name === 'Hatred');
+  const anger = quickIndex.buffs.find(buff => buff.name === 'Anger');
+  // Hatred adds cold damage as extra damage from physical, so a physical attack shows it.
+  const coldSkill = named(quickIndex.skills, 'Cyclone');
+  const coldBase = { skill: coldSkill, ascendancy: elementalist, weapon: 'sword', ailment: null, supports: [], notables: [], keystones: [], uniques: [], buffs: [hatred], flasks: [] };
+  const hatredEffect = { name: 'test hatred effect', effects: [{ kind: 'increased', stat: 'effect:aura', skill: 'Hatred', value: 30 }] };
+  const angerEffect = { name: 'test anger effect', effects: [{ kind: 'increased', stat: 'effect:aura', skill: 'Anger', value: 30 }] };
+  const plainHatred = generator.evaluateBuild(coldBase).scaling;
+  check('buffs: an aura\'s own effect lines scale it', generator.evaluateBuild({ ...coldBase, notables: [hatredEffect] }).scaling > plainHatred);
+  check('buffs: another aura\'s effect lines do nothing', generator.evaluateBuild({ ...coldBase, notables: [angerEffect] }).scaling === plainHatred);
+  const whileHatred = { name: 'test while hatred', effects: [{ kind: 'increased', stat: 'damage', tags: [], value: 40, condition: 'affectedBy:Hatred' }] };
+  check('conditions: "while affected by Hatred" holds with Hatred', generator.evaluateBuild({ ...coldBase, notables: [whileHatred] }).scaling > plainHatred);
+  check('conditions: and not without it', generator.evaluateBuild({ ...coldBase, buffs: [anger], notables: [whileHatred] }).scaling
+    === generator.evaluateBuild({ ...coldBase, buffs: [anger] }).scaling);
+
+  // Timeless jewels: the keystones they grant come from our own reading; a socket reaches the keystones in a Large
+  // radius (1,500 game units, 1,800 on the tree); a planned tree holds at most one, and its keystone list shows the
+  // conqueror's keystone, not the one it replaced.
+  check('timeless: conqueror keystones are read', fullIndex.timeless.length >= 15 && fullIndex.timeless.some(choice => choice.keystone === 'Strength of Blood'),
+    String(fullIndex.timeless.length));
+  check('timeless: most sockets reach a keystone', fullIndex.tree.keystonesNearSocket.size >= 10, String(fullIndex.tree.keystonesNearSocket.size));
+  // Planned without bloodlines: with them the build spends its points on Oath of the Maji and its tree no longer
+  // wants Inner Conviction, which says nothing about whether timeless jewels are planned right.
+  const withoutBloodlines = { ...fullIndex, bloodlineNotables: [] };
+  const timelessFireball = generator.finalizeTree(generator.bestBuildFor(named(fullIndex.skills, 'Fireball'), named(fullIndex.ascendancies, 'Elementalist'), withoutBloodlines).build, withoutBloodlines);
+  const timelessJewels = (timelessFireball.tree.jewels || []).filter(jewel => jewel.kind === 'timeless');
+  check('timeless: a Fireball Elementalist takes one, and only one', timelessJewels.length === 1, (timelessFireball.tree.jewels || []).map(jewel => jewel.name).join(' | '));
+  if (timelessJewels.length === 1) {
+    check('timeless: the conquered keystone shows as the conqueror\'s', timelessFireball.tree.keystones.includes(timelessJewels[0].keystone)
+      && !timelessFireball.tree.keystones.includes(timelessJewels[0].conquers), timelessFireball.tree.keystones.join(', '));  }
+
+  // Stages: the default weights are the power score, bit for bit.
+  let mismatches = 0;
+  for (const skillName of ['Fireball', 'Cyclone', 'Raise Spectre', 'Toxic Rain']) {
+    const build = generator.bestBuildFor(named(quickIndex.skills, skillName), elementalist, quickIndex).build;
+    const evaluation = generator.evaluateBuild(build);
+    if (stages.totalOf(evaluation, stages.DEFAULT_WEIGHTS) !== evaluation.score) {
+      mismatches += 1;
+    }
+  }
+  check('stages: the default total is the power score exactly', mismatches === 0, mismatches + ' builds differ');
+  const defaultScored = generator.bestBuildFor(fireball, elementalist, quickIndex, { scoreOf: stages.scoreFunctionFor(stages.DEFAULT_WEIGHTS) });
+  const plainNames = build => JSON.stringify([build.supports.map(entry => entry.support.name), build.notables.map(n => n.name), build.uniques.map(u => u.name), build.buffs.map(b => b.name)]);
+  check('stages: planning by the default weights gives the generator\'s plan', plainNames(defaultScored.build) === plainNames(fireballBuild));
+  const rarityWeights = { ...stages.DEFAULT_WEIGHTS, rarity: 0.5 };
+  const rarityPlan = generator.bestBuildFor(fireball, elementalist, quickIndex, { scoreOf: stages.scoreFunctionFor(rarityWeights) });
+  check('stages: weighing rarity buys rarity', rarityPlan.evaluation.itemRarity > generator.evaluateBuild(fireballBuild).itemRarity,
+    rarityPlan.evaluation.itemRarity + ' vs ' + generator.evaluateBuild(fireballBuild).itemRarity);
+
+  // Agents: they never lower the total, and an earlier stage never loses more than the tolerance.
+  const agentWeights = { ...stages.DEFAULT_WEIGHTS, speed: 0.2 };
+  const agentPlan = generator.planSkill(fireball, quickIndex, { scoreOf: stages.scoreFunctionFor(agentWeights) });
+  const agentStart = generator.composeForAscendancy(agentPlan, elementalist, quickIndex, { scoreOf: stages.scoreFunctionFor(agentWeights) }).build;
+  const settled = stages.negotiate(agentStart, { weights: agentWeights, tolerance: 0.05, uniques: agentPlan.plans[0].uniques, index: quickIndex });
+  const startTotal = stages.totalOf(generator.evaluateBuild(agentStart), agentWeights);
+  check('agents: the total never falls', stages.totalOf(settled.evaluation, agentWeights) >= startTotal);
+  check('agents: single target keeps at least 95% while later stages trade', settled.after.singleTarget >= settled.before.singleTarget * 0.95,
+    settled.after.singleTarget.toFixed(1) + ' vs ' + settled.before.singleTarget.toFixed(1));
+  check('agents: every swap is logged with its stage', settled.log.every(entry => stages.STAGES.some(stage => stage.id === entry.agent) && (entry.added || entry.removed)));
+
+  // Limits: at least two, class and ascendancy counting once; playstyles pick and seed the right skills.
+  check('limits: an ascendancy counts as two, alone enough to plan', search.limitCount({ ascendancy: 'Elementalist' }) === 2
+    && search.limitCount({ class: 'Witch', ascendancy: 'Elementalist' }) === 2);
+  check('limits: a class alone is one, not enough', search.limitCount({ class: 'Witch' }) === 1);
+  check('limits: class and damage are two', search.limitCount({ class: 'Witch', damage: 'fire' }) === 2);
+  const totemVariants = search.skillVariants(quickIndex, { playstyle: 'totem', damage: 'fire' }, false);
+  check('limits: Fireball is planned as a totem with Spell Totem', totemVariants.some(variant => variant.skill === 'Fireball' && variant.seedSupports.includes('Spell Totem Support')));
+  check('limits: Holy Flame Totem is a totem as it is', totemVariants.some(variant => variant.skill === 'Holy Flame Totem' && variant.seedSupports.length === 0));
+  const hitVariants = search.skillVariants(quickIndex, { playstyle: 'hit', damage: 'fire' }, false);
+  check('limits: a hit build has no minion or totem skills', !hitVariants.some(variant => ['Raise Zombie', 'Holy Flame Totem', 'Summon Raging Spirit'].includes(variant.skill)));
+  const staffVariants = search.skillVariants(quickIndex, { weapon: 'staff', damage: 'physical' }, false);
+  check('limits: a weapon limit plans only that weapon', staffVariants.length > 0 && staffVariants.every(variant => JSON.stringify(variant.weapons) === '["staff"]'));
+  check('limits: a wide search plans more skills', search.skillVariants(quickIndex, { class: 'Witch', damage: 'fire' }, true).length
+    > search.skillVariants(quickIndex, { class: 'Witch', damage: 'fire' }, false).length);
+  const fireballTotem = totemVariants.find(variant => variant.skill === 'Fireball' && variant.seedSupports.includes('Spell Totem Support'));
+  const totemQuick = search.quickPlans(fireballTotem, quickIndex, ['Hierophant'], { limits: { playstyle: 'totem', damage: 'fire' } });
+  check('limits: a seeded totem plan is scored', totemQuick.length === 1 && totemQuick[0].total > 0);
+  const totemCard = search.fullPlan(fireballTotem, 'Hierophant', fullIndex, { limits: { playstyle: 'totem', damage: 'fire' } });
+  check('planner: a full plan keeps its seeded support', totemCard && totemCard.supports.includes('Spell Totem Support'), totemCard && totemCard.supports.join(', '));
+  check('planner: a full plan has a tree, stages and a tag report', totemCard && totemCard.treePoints > 0 && totemCard.stages.ehp > 0 && totemCard.tagsSkipped.length > 0);
+  check('planner: a damage type limit holds on the finished build', totemCard && search.keepsLimits(generator.evaluateBuild(generator.rebuildFromNames(totemCard, fullIndex)), { damage: 'fire' }));
+} else {
+  console.log('(no mechanics or tree data: run npm run builds:build for the planner checks)');
+}
+
+// Rare gear solved from the Crafting tab's data (public/buildgear.js): resistances capped, attribute shortfalls made
+// up where an item can, at most three prefixes and three suffixes an item with one affix per group, nothing in a
+// unique's slot, and the same gear back from a stored build.
+const gearFile = path.join(root, 'public', 'data', 'craft', 'gear-poe1.json');
+if (fs.existsSync(plannerMechanicsFile) && fs.existsSync(plannerTreeFile) && fs.existsSync(gearFile)) {
+  const mechanics = JSON.parse(fs.readFileSync(plannerMechanicsFile, 'utf8'));
+  const named = (list, name) => list.find(entry => entry.name === name);
+  const gearIndex = generator.prepareMechanics(mechanics, JSON.parse(fs.readFileSync(plannerTreeFile, 'utf8')),
+    JSON.parse(fs.readFileSync(gearFile, 'utf8')));
+  const geared = generator.bestBuildFor(named(gearIndex.skills, 'Boneshatter of Complex Trauma'), named(gearIndex.ascendancies, 'Juggernaut'), gearIndex).build;
+  const needs = generator.gearNeedsOf(geared);
+  check('gear: resistances are capped', Object.values(needs.resistanceShort).every(short => short <= 0), JSON.stringify(needs.resistanceShort));
+  const items = geared.gear ? geared.gear.items : [];
+  check('gear: rare items are filled', items.length >= 5 && items.every(item => item.prefixes.length + item.suffixes.length > 0), String(items.length));
+  check('gear: at most three prefixes and three suffixes', items.every(item => item.prefixes.length <= 3 && item.suffixes.length <= 3));
+  check('gear: one affix per modifier group', items.every(item => {
+    const groups = [...item.prefixes, ...item.suffixes].flatMap(affix => affix.groups || []);
+    return new Set(groups).size === groups.length;
+  }));
+  const uniqueSlots = new Set(geared.uniques.filter(unique => unique.slot !== 'ring').map(unique => unique.slot));
+  check('gear: no rare in a unique\'s slot', items.every(item => !uniqueSlots.has(item.slot)));
+  const stored = generator.compactBuild(geared, generator.evaluateBuild(geared));
+  const rebuilt = generator.rebuildFromNames(stored, gearIndex);
+  // The items, affix by affix (a rebuilt build's tree is planned again, so its score is compared elsewhere).
+  const affixIds = gear => (gear ? gear.items : []).map(item => item.key + ':' + [...item.prefixes, ...item.suffixes].map(affix => affix.id).join(','));
+  // The generated file keeps gear short (storeGear) and the page expands it: the same items come back.
+  const gearModule = await import(pathToFileURL(path.join(root, 'public', 'buildgear.js')).href);
+  const shortForm = gearModule.storeGear(stored.gear);
+  const expanded = gearModule.compactGear(gearModule.rebuildGear(shortForm, gearIndex.gear));
+  check('gear: the short stored form expands to the same items', JSON.stringify(expanded) === JSON.stringify(stored.gear));
+  check('gear: a stored build gets its gear back', rebuilt && JSON.stringify(affixIds(rebuilt.gear)) === JSON.stringify(affixIds(geared.gear)));
+  // Uniques are weighed against the rare that would take their slot: a rare spell shield (+1 to lightning spell gems,
+  // lightning damage, spell critical strike chance) beats Rathpith Globe for a Spark of the Nova Hierophant.
+  const caster = generator.bestBuildFor(named(gearIndex.skills, 'Spark of the Nova'), named(gearIndex.ascendancies, 'Hierophant'), gearIndex).build;
+  const casterShield = (caster.gear ? caster.gear.items : []).find(item => item.slot === 'offhand');
+  check('gear: a rare shield replaces a weaker unique shield', !caster.uniques.some(unique => unique.name === 'Rathpith Globe') && Boolean(casterShield),
+    caster.uniques.map(unique => unique.name).join(', '));
+  // A stacking commitment chosen early: Spark of the Nova on Hierophant commits to mana, and so takes Archmage.
+  check('stacking: Spark Hierophant stacks mana for Archmage', caster.stacking === 'mana' && caster.supports.some(entry => entry.support.name === 'Archmage Support'),
+    String(caster.stacking) + ': ' + caster.supports.map(entry => entry.support.name).join(', '));
+} else {
+  console.log('(no gear data: run npm run craft:build and scripts/build_gear_mods.py for the gear checks)');
 }
 
 if (failures.length > 0) {

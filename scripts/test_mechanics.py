@@ -27,6 +27,82 @@ def expect(line, range_mode, **wanted):
 
 CASES = [
     # (line, range mode, expected fields)
+    # Two-attribute lines read as all three (2026-11-12), which matters once attribute requirements are met by gear.
+    ("+20 to Strength and Dexterity", "roll", dict(stat="strength", value=20.0)),
+    # Bloodlines (2026-11-12): per-minion lines read as 3 stacks, so Umbral Army went on every attack build.
+    ("15% increased Attack Damage per Raised Zombie", "roll", dict(stat="damage", condition="perOwnMinion")),
+    ("6% increased Spell Damage per Summoned Skeleton", "roll", dict(stat="damage", condition="perOwnMinion")),
+    ("4% increased Attack Speed per Minion, up to a maximum of 80%", "roll", dict(stat="attackSpeed", condition="perOwnMinion")),
+    # Oath of the Maji wants gemless slots: gloves and boots are given up for it, body and helmet lines aren't counted.
+    ("25% increased Maximum Life if you have Equipped Gloves with no Socketed Gems", "roll", dict(stat="life", value=25.0, condition=None)),
+    ("+50% to all Elemental Resistances if you have an Equipped Helmet with no Socketed Gems", "roll", dict(kind="minor")),
+    ("+2 to Level of all Lightning Skill Gems if at least 4 Foulborn Unique Items are Equipped", "roll", dict(kind="minor")),
+    # Defensive self buffs: Arctic Armour's "while stationary" lingers after you move; Frost Shield's life is a pool.
+    ("Buff grants (11-21)% less Physical Damage taken from Hits while stationary", "level",
+     dict(kind="more", stat="damageTaken", value=-21.0, condition="stationaryLingering")),
+    ("Frost Shield has (190-910) maximum Life per Stage", "level", dict(stat="frostShieldPool", value=3640.0)),
+    # Conversion moves life into energy shield; it read like "as extra", which kept the life (Ghostwrithe doubled half
+    # the pool and sat in 88% of generated builds, 2026-11-12).
+    ("50% of Maximum Life Converted to Energy Shield", "roll", dict(stat="lifeConvertedToEnergyShield", value=50.0)),
+    ("Gain 20% of Maximum Life as Extra Maximum Energy Shield", "roll", dict(stat="lifeToEnergyShield", value=20.0)),
+    # Damage from defences (Righteous Fire, Ephemeral Edge, Dreamfeather): Dreamfeather read as 3 stacks.
+    ("1% increased Attack Damage per 450 Evasion Rating", "roll", dict(kind="perDefence", defence="evasion", per=450)),
+    ("Deals 70% of your Maximum Life as Base Fire Damage per second", "level", dict(kind="perDefence", defence="life", value=70.0)),
+    ("You Burn for 90% of your Maximum Life per second as Fire Damage", "level", dict(stat="selfBurnLife", value=90.0)),
+    ("Attacks with this Weapon have Added Maximum Lightning Damage equal to (10-15)% of Player's Maximum Energy Shield", "roll",
+     dict(kind="perDefence", defence="energyShield", value=6.25)),
+    ("Armour is increased by Overcapped Fire Resistance", "roll", dict(kind="flag", stat="armourFromOvercappedFire")),
+    # Endurance Charges are counted, not assumed at 3; Undeniable's accuracy line read as 3 stacks (3%).
+    ("1% additional Physical Damage Reduction per Endurance Charge", "roll", dict(stat="physicalReduction", condition="perEnduranceCharge")),
+    ("1% increased Attack Speed per 150 Accuracy Rating", "roll", dict(stat="attackSpeed", value=15)),
+    ("Enemies you or your Totems Kill have 10% chance to Explode, dealing 250% of their maximum Life as Fire Damage", "roll",
+     dict(kind="flag", stat="explodeOnKill")),
+    # Impale lines were always on, so a Champion with no chance to impale got them in full (2026-11-12). Impale is
+    # modelled now: the extra hits and Impales feed it, and "when you impale" lines hold as often as the build does.
+    ("Impales you inflict last 1 additional Hit", "roll", dict(kind="flat", stat="impaleHits", value=1.0)),
+    ("Inflict 5 additional Impales on Enemies you Impale", "roll", dict(kind="flat", stat="impaleExtra", value=5.0)),
+    ("15% increased Impale Effect", "roll", dict(kind="increased", stat="effect:impale", value=15.0)),
+    ("If you've Impaled an Enemy Recently, you\nand nearby Allies have +1000 to Armour", "roll",
+     dict(stat="armour", value=1000.0, condition="impale")),
+    ("You and nearby Allies deal 6 to 12 added Physical Damage for\neach Impale on Enemy", "roll",
+     dict(kind="added", stat="damage", value=45, condition="impale")),
+    # "per Fortification above 20" read as 3 stacks, so every Champion got 9% more armour and attack speed.
+    ("3% more Armour and Evasion Rating per Fortification above 20", "roll", dict(stat="armour", condition="fortificationAbove20")),
+    ("3% increased Attack Speed per Fortification above 20", "roll", dict(stat="attackSpeed", condition="fortificationAbove20")),
+    # Rage wasn't modelled: these lines were unread or a flat guess. Now they are Rage sources and riders the engine
+    # scales by Rage.
+    ("Every Rage also grants 1% increased Attack Speed", "roll", dict(kind="flag", stat="rageGrantsAttackSpeed")),
+    ("Gain 1 Rage on Attack Hit", "roll", dict(kind="flag", stat="rageSource", tags=["attack"])),
+    ("Gain 3 Rage on Melee Weapon Hit", "roll", dict(kind="flag", stat="rageSource", tags=["melee"])),
+    ("Gain 1 Rage on Hit with Axes", "roll", dict(kind="flag", stat="rageSource", tags=["axe"])),
+    # Conditions found missing by scripts/check_against_pob.py (2026-11-12). Special shapes and hand-written statements
+    # matched the start of a line and dropped the condition after it, so these all read as always on.
+    ("+10% to Damage over Time Multiplier if you've Killed Recently", "roll", dict(stat="dotMulti", condition="recentKill")),
+    ("+18% to Cold Damage over Time Multiplier per Power Charge", "roll", dict(stat="dotMulti", tags=["cold"], condition="perStack")),
+    ("+12% to Damage over Time Multiplier for Poison you inflict on Bleeding Enemies", "roll",
+     dict(stat="dotMulti", tags=["poison"], condition="enemyBleeding")),
+    ("+3 to Minimum Endurance Charges while on Low Life", "roll", dict(stat="minimumEnduranceCharges", condition="lowLife")),
+    ("Prevent +15% of Suppressed Spell Damage while on Full Energy Shield", "roll", dict(stat="suppressPrevent", condition="fullEnergyShield")),
+    # ...but a "per" that belongs to the stat stays: life per enemy hit is not a stacking condition.
+    ("Grants 10 Life per Enemy Hit", "roll", dict(stat="onHitRecovery", value=10, condition=None)),
+    # "while affected by Hatred" holds when the build runs Hatred (the engine checks); it read as "other" or not at all.
+    ("+1.5% to Critical Strike Chance while affected by Hatred", "roll", dict(stat="baseCrit", condition="affectedBy:Hatred")),
+    ("+20% to Damage over Time Multiplier while affected by Malevolence", "roll", dict(stat="dotMulti", condition="affectedBy:Malevolence")),
+    ("20% increased Damage while affected by a Guard Skill", "roll", dict(stat="damage", condition="guard")),
+    ("+15% Chance to Block Attack Damage from Cursed Enemies", "roll", dict(stat="block", condition="enemyCursed")),
+    # A unique flask's lines hold during its effect; they were read as a made-up stat "effect:attackSpeedDuring".
+    ("10% increased Attack Speed during Effect", "roll", dict(kind="increased", stat="attackSpeed", condition="flask")),
+    ("10% increased Attack and Cast Speed during any Flask Effect", "roll", dict(kind="increased", condition="flask")),
+    # A burst of regeneration every 4 seconds averages a quarter of it a second; it was a flat 8% a second.
+    ("Every 4 seconds, Regenerate 10% of Life over one second", "roll", dict(stat="lifeRegen", value=2.5)),
+    # Burning damage was read as ignite only, so burning skills didn't get it; it is fire damage over time.
+    ("11% increased Burning Damage", "roll", dict(kind="increased", stat="damage", tags=["fire", "dot"], value=11)),
+    ("Supported Skills deal 20% more Burning Damage", "roll", dict(kind="more", stat="damage", tags=["fire", "dot"])),
+    # Item rarity and quantity were all read as minor; the build planner's rarity stage weighs the plain lines.
+    ("(10-15)% increased Rarity of Items found", "roll", dict(kind="increased", stat="itemRarity", value=12.5)),
+    ("10% reduced Quantity of Items found", "roll", dict(kind="increased", stat="itemQuantity", value=-10)),
+    # A line about items dropped by some enemies has a scope we don't model: it stays minor, not global rarity.
+    ("30% increased Rarity of Items Dropped by Enemies killed with a Critical Strike", "roll", dict(kind="minor")),
     ("Supported Skills deal (25-39)% more Spell Damage", "level",
      dict(kind="more", stat="damage", tags=["spell"], value=39, subject="supported")),
     ("Supported Skills have (40-54)% more Cast Speed", "level", dict(kind="more", stat="castSpeed", value=54)),
@@ -34,7 +110,7 @@ CASES = [
     ("Minions deal 25% increased Damage", "roll", dict(kind="increased", stat="damage", subject="minion", value=25)),
     ("20% more Critical Strike Chance while wielding a Dagger", "roll",
      dict(kind="more", stat="critChance", requires=["dagger"], value=20)),
-    ("8% increased Damage per Endurance Charge", "roll", dict(kind="increased", stat="damage", condition="perStack")),
+    ("8% increased Damage per Endurance Charge", "roll", dict(kind="increased", stat="damage", condition="perEnduranceCharge")),
     ("Nearby Enemies have -20% to Cold Resistance", "roll",
      dict(kind="exposure", stat="resistance", tags=["cold"], value=-20, subject="enemy")),
     ("Attack Damage Penetrates 8% of Enemy Elemental Resistances", "roll",
@@ -58,8 +134,11 @@ CASES = [
     ("Exposure you inflict applies an extra -25% to the affected Resistance", "roll",
      dict(kind="exposure", value=-25, subject="enemy")),
     ("Cannot deal non-Cold Damage", "roll", dict(kind="flag", stat="pureElement")),
+    ("Life Recovery other than Flasks cannot Recover Life to above Low Life", "roll", dict(kind="flag", stat="lifeCappedAtLowLife")),
+    ("When taking Damage from Hits, 40% of Life loss below half Life is Prevented, then (100-81)% of Life loss prevented this way is lost over 4 seconds",
+     "level", dict(kind="flag", stat="lowerHalfLifeProtected")),
     ("Supported Skills gain Added Lightning Damage equal to (8-14)% of Unreserved Maximum Mana", "level",
-     dict(kind="more", stat="damage", subject="supported")),
+     dict(kind="more", stat="damage", subject="supported", condition="unreservedMana")),
     ("Supported Skills have +(70-98)% Damage over Time Multiplier for Ailments from Critical Strikes", "level",
      dict(kind="flat", stat="dotMulti", value=98, condition="onCrit")),
     ("-(20-10)% to all Elemental Resistances", "roll", dict(kind="resistance", value=-15)),

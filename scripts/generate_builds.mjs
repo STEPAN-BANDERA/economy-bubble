@@ -7,14 +7,22 @@
 // (scripts/fetch_build_meta.py); writes public/data/builds/generated-poe1.json and prints a calibration report:
 // how many of the most played archetypes the generator found on its own, and how many of its ideas land in the
 // niche band (played, but by few).
+//
+// The skills are planned in worker threads (one per core, less two; GENERATE_WORKERS sets the count, 1 runs one
+// worker). Each skill is planned on its own, and the results are put back in skill order, so the output is the same
+// with any number of workers.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUILDS = path.join(ROOT, 'public', 'data', 'builds');
-const OUT = path.join(BUILDS, 'generated-poe1.json');
+// GENERATE_OUT writes elsewhere (to compare two runs without touching the published file).
+const OUT = process.env.GENERATE_OUT ? path.resolve(process.env.GENERATE_OUT) : path.join(BUILDS, 'generated-poe1.json');
 const engine = await import(pathToFileURL(path.join(ROOT, 'public', 'buildgen.js')).href);
+const gearEngine = await import(pathToFileURL(path.join(ROOT, 'public', 'buildgear.js')).href);
 
 const CALIBRATION_TOP_ARCHETYPES = 30;
 const CALIBRATION_GENERATED_TOP = 300;
@@ -59,68 +67,24 @@ function roundTo(value, places) {
   return Math.round(value * factor) / factor;
 }
 
-// What the file keeps of a build: names only. The page looks the pieces up in the mechanics file and works out
-// with the same engine why each is there, when a card is opened.
-function compactBuild(build, evaluation) {
-  const supports = [];
-  for (const entry of build.supports) {
-    supports.push(entry.support.name);
-  }
-  const names = list => list.map(piece => piece.name);
-  const stored = {
-    ascendancy: build.ascendancy.name, baseClass: build.ascendancy.baseClass, skill: build.skill.name,
-    weapon: build.weapon, score: roundTo(evaluation.score, 3), scaling: roundTo(evaluation.scaling, 2),
-    defence: roundTo(evaluation.defence, 3), ehp: Math.round(evaluation.ehp), dps: evaluation.dps ? Math.round(evaluation.dps) : null, clear: roundTo(evaluation.clear, 3), crit: evaluation.crit,
-    supports, notables: names(build.notables), keystones: names(build.keystones), uniques: names(build.uniques),
-    buffs: names(build.buffs || []), flasks: names(build.flasks || []),
-  };
-  const cost = engine.costOf(build);
-  if (cost !== null) {
-    stored.cost = roundTo(cost, 1);
-  }
-  if (build.tree) {
-    // The tree's own node list isn't stored: the page plans it again (finalizeTree) when a card is opened.
-    stored.keystones = [...build.tree.keystones];
-    stored.treeNotables = [...build.tree.notables];
-    stored.treePoints = build.tree.points;
-    stored.treeMasteries = masteryLines(build.tree.masteries);
-    stored.treeJewels = (build.tree.jewels || []).map(jewel => jewel.name);
-  }
-  return stored;
-}
-
-// Each chosen mastery as "Life Mastery: +50 to maximum Life", its lines joined when an option has several.
-function masteryLines(masteries) {
-  const lines = [];
-  for (const mastery of masteries) {
-    lines.push(mastery.name + ': ' + mastery.text.split('\n').join('; '));
-  }
-  return lines;
-}
+// What the file keeps of a build: the engine's compactBuild, which the build planner's cards share.
+const compactBuild = engine.compactBuild;
 
 // The kept builds' trees, planned again with every other piece in place (as the page does), and their scores
 // with that tree. With prices, each also gets its value plan (see valuePlanOf).
-function finalizeKept(kept, index, skillPlans) {
-  const finalized = [];
-  let done = 0;
-  for (const stored of kept) {
-    const build = engine.rebuildFromNames({ ...stored, keystones: [] }, index);
-    done += 1;
-    if (!build) {
-      continue;
-    }
-    const evaluation = engine.evaluateBuild(build);
-    const fresh = compactBuild(build, evaluation);
-    const entry = { ...stored, ...fresh, players: stored.players, band: stored.band, pastPlayers: stored.pastPlayers };
-    if (index.priced) {
-      entry.value = valuePlanOf(stored, build, index, skillPlans);
-    }
-    finalized.push(entry);
-    if (done % 500 === 0) {
-      console.log(`  final trees: ${done}/${kept.length}`);
-    }
+// A kept build with the tree its own pieces call for, and its value plan; null when it can't be rebuilt.
+function finalizeOne(stored, index, skillPlans) {
+  const build = engine.rebuildFromNames({ ...stored, keystones: [] }, index);
+  if (!build) {
+    return null;
   }
-  return finalized;
+  const evaluation = engine.evaluateBuild(build);
+  const fresh = compactBuild(build, evaluation);
+  const entry = { ...stored, ...fresh, players: stored.players, band: stored.band, pastPlayers: stored.pastPlayers };
+  if (index.priced) {
+    entry.value = valuePlanOf(stored, build, index, skillPlans);
+  }
+  return entry;
 }
 
 // The pieces of a stored build that its plan chose (the tree is planned from them).
@@ -277,49 +241,183 @@ function pieceFrequencies(builds, field) {
   return [...counts.entries()].sort((first, second) => second[1] - first[1]);
 }
 
-function main() {
+// The mechanics, tree, rare gear and prices, prepared the same way in the main thread and in every worker.
+function loadIndex(say) {
   const mechanics = readJson(path.join(BUILDS, 'mechanics-poe1.json'));
-  const { current, past } = readMeta();
   const tree = readJson(path.join(BUILDS, 'tree-poe1.json'));
-  const index = engine.prepareMechanics(mechanics, tree);
+  // Rare gear from the Crafting tab's data (scripts/build_gear_mods.py), when it is built; else the fixed gear figures.
+  const gearFile = path.join(ROOT, 'public', 'data', 'craft', 'gear-poe1.json');
+  const gear = existsSync(gearFile) ? readJson(gearFile) : null;
+  say(gear ? 'rare gear: solved from public/data/craft/gear-poe1.json' : 'rare gear: fixed figures (no public/data/craft/gear-poe1.json)');
+  const index = engine.prepareMechanics(mechanics, tree, gear);
   const prices = readUniquePrices();
   if (prices) {
     engine.attachPrices(index, prices.prices, prices.divineChaos);
-    console.log(`unique prices from ${prices.pricesFrom || prices.league}, ${prices.fetched} (1 Divine = ${prices.divineChaos} chaos)`);
+    say(`unique prices from ${prices.pricesFrom || prices.league}, ${prices.fetched} (1 Divine = ${prices.divineChaos} chaos)`);
   } else {
-    console.log('no unique prices (run scripts/fetch_unique_prices.py): planning without them');
+    say('no unique prices (run scripts/fetch_unique_prices.py): planning without them');
   }
-  const mainSkills = index.skills.filter(skill => skill.main);
-  const started = Date.now();
-  const builds = [];
+  return { mechanics, index, prices };
+}
+
+// ---------- a worker: plans the skills it is given and keeps their plans for the final trees ----------
+function workerMain() {
+  const { index } = loadIndex(() => {});
   const skillPlans = new Map();
-  let done = 0;
-  for (const skill of mainSkills) {
-    const plan = engine.planSkill(skill, index);
-    skillPlans.set(skill.name, plan);
-    if (plan.plans.length > 0) {
-      for (const ascendancy of index.ascendancies) {
-        const { build, evaluation } = engine.composeForAscendancy(plan, ascendancy, index);
-        if (!build || evaluation.score <= 0) {
-          continue;
+  parentPort.on('message', message => {
+    if (message.type === 'plan') {
+      const skill = index.skills.find(candidate => candidate.name === message.skill);
+      const plan = engine.planSkill(skill, index);
+      skillPlans.set(skill.name, plan);
+      const builds = [];
+      if (plan.plans.length > 0) {
+        for (const ascendancy of index.ascendancies) {
+          const { build, evaluation } = engine.composeForAscendancy(plan, ascendancy, index);
+          if (build && evaluation.score > 0) {
+            builds.push(compactBuild(build, evaluation));
+          }
         }
-        const compact = compactBuild(build, evaluation);
-        const verdict = engine.verifyBuild(compact.ascendancy, compact.skill, current.populations);
-        compact.players = verdict.players;
-        compact.band = verdict.band.id;
-        compact.pastPlayers = pastPlayers(past, compact.ascendancy, compact.skill);
-        builds.push(compact);
+      }
+      parentPort.postMessage({ type: 'planned', skill: skill.name, builds });
+    } else if (message.type === 'finalize') {
+      // Any worker finalizes any build: one without that skill's plan makes it (planning is deterministic, so it is
+      // the same plan the first worker made).
+      if (!skillPlans.has(message.stored.skill)) {
+        const skill = index.skills.find(candidate => candidate.name === message.stored.skill);
+        skillPlans.set(skill.name, engine.planSkill(skill, index));
+      }
+      parentPort.postMessage({ type: 'finalized', position: message.position, finalized: finalizeOne(message.stored, index, skillPlans) });
+    }
+  });
+  parentPort.postMessage({ type: 'ready' });
+}
+
+function workerCount() {
+  const asked = Number(process.env.GENERATE_WORKERS);
+  if (Number.isInteger(asked) && asked > 0) {
+    return asked;
+  }
+  return Math.max(1, (os.availableParallelism ? os.availableParallelism() : os.cpus().length) - 2);
+}
+
+function startWorkers(count) {
+  const workers = [];
+  for (let position = 0; position < count; position += 1) {
+    const worker = new Worker(fileURLToPath(import.meta.url));
+    workers.push({ worker, ready: new Promise(resolve => worker.once('message', resolve)) });
+  }
+  return workers;
+}
+
+// Every skill planned, a free worker taking the next one; returns each skill's builds and which worker has its plan.
+async function planAll(workers, skillNames) {
+  const buildsBySkill = new Map();
+  const ownerOf = new Map();
+  const started = Date.now();
+  let next = 0;
+  let done = 0;
+  await Promise.all(workers.map(entry => entry.ready));
+  await Promise.all(workers.map((entry, position) => new Promise(resolve => {
+    const giveNext = () => {
+      if (next >= skillNames.length) {
+        resolve();
+        return;
+      }
+      const skill = skillNames[next];
+      next += 1;
+      ownerOf.set(skill, position);
+      entry.worker.postMessage({ type: 'plan', skill });
+    };
+    entry.worker.on('message', message => {
+      if (message.type !== 'planned') {
+        return;
+      }
+      buildsBySkill.set(message.skill, message.builds);
+      done += 1;
+      if (done % 50 === 0) {
+        console.log(`  ${done}/${skillNames.length} skills, ${Math.round((Date.now() - started) / 1000)} s`);
+      }
+      giveNext();
+    });
+    giveNext();
+  })));
+  for (const entry of workers) {
+    entry.worker.removeAllListeners('message');
+  }
+  return { buildsBySkill, ownerOf };
+}
+
+// The kept builds finalized one at a time by whichever worker is free, preferring a build whose skill that worker
+// planned, back in the kept order.
+async function finalizeAll(workers, kept, ownerOf) {
+  const results = new Array(kept.length).fill(null);
+  const waiting = new Set(kept.map((stored, position) => position));
+  let done = 0;
+  const nextFor = workerPosition => {
+    for (const position of waiting) {
+      if (ownerOf.get(kept[position].skill) === workerPosition) {
+        return position;
       }
     }
-    done += 1;
-    if (done % 50 === 0) {
-      console.log(`  ${done}/${mainSkills.length} skills, ${Math.round((Date.now() - started) / 1000)} s`);
+    const first = waiting.values().next();
+    return first.done ? null : first.value;
+  };
+  await Promise.all(workers.map((entry, workerPosition) => new Promise(resolve => {
+    const giveNext = () => {
+      const position = nextFor(workerPosition);
+      if (position === null) {
+        resolve();
+        return;
+      }
+      waiting.delete(position);
+      entry.worker.postMessage({ type: 'finalize', stored: kept[position], position });
+    };
+    entry.worker.on('message', message => {
+      if (message.type !== 'finalized') {
+        return;
+      }
+      results[message.position] = message.finalized;
+      done += 1;
+      if (done % 500 === 0) {
+        console.log(`  final trees: ${done}/${kept.length}`);
+      }
+      giveNext();
+    });
+    giveNext();
+  })));
+  return results.filter(entry => entry !== null);
+}
+
+async function main() {
+  const { mechanics, index, prices } = loadIndex(message => console.log(message));
+  const { current, past } = readMeta();
+  const mainSkills = index.skills.filter(skill => skill.main);
+  const count = workerCount();
+  console.log(`planning in ${count} worker thread${count === 1 ? '' : 's'}`);
+  const started = Date.now();
+  const workers = startWorkers(count);
+  const { buildsBySkill, ownerOf } = await planAll(workers, mainSkills.map(skill => skill.name));
+  // In skill order, as one thread would have made them, with poe.ninja's player counts.
+  const builds = [];
+  for (const skill of mainSkills) {
+    for (const compact of buildsBySkill.get(skill.name) || []) {
+      const verdict = engine.verifyBuild(compact.ascendancy, compact.skill, current.populations);
+      compact.players = verdict.players;
+      compact.band = verdict.band.id;
+      compact.pastPlayers = pastPlayers(past, compact.ascendancy, compact.skill);
+      builds.push(compact);
     }
   }
   addFit(builds);
   builds.sort((first, second) => second.idea - first.idea || first.ascendancy.localeCompare(second.ascendancy) || first.skill.localeCompare(second.skill));
   const calibration = calibrate(builds, current);
   const ascendancyHitRate = calibration.ascendancy.tested > 0 ? calibration.ascendancy.hits / calibration.ascendancy.tested : 0;
+  const kept = keptBuilds(builds);
+  console.log(`  final trees for ${kept.length} kept builds`);
+  const finalized = await finalizeAll(workers, kept, ownerOf);
+  for (const entry of workers) {
+    await entry.worker.terminate();
+  }
   const output = {
     built: new Date().toISOString().slice(0, 10), patch: mechanics.patch, league: current.league,
     leagueUrl: current.leagueUrl, method: 'scripts/generate_builds.mjs with public/buildgen.js',
@@ -333,7 +431,8 @@ function main() {
     },
     // Fit and calibration come from the comparison above (one tree per class); the kept builds then get the tree
     // their own pieces call for, which is what the page shows.
-    builds: finalizeKept(keptBuilds(builds), index, skillPlans),
+    // Rare gear in its short form (storeGear): the page brings back the affix text from the gear data.
+    builds: finalized.map(entry => (entry.gear ? { ...entry, gear: gearEngine.storeGear(entry.gear) } : entry)),
   };
   writeFileSync(OUT, JSON.stringify(output));
   console.log(`${builds.length} builds from ${mainSkills.length} skills x ${index.ascendancies.length} ascendancies in ${Math.round((Date.now() - started) / 1000)} s -> ${path.relative(ROOT, OUT)}`);
@@ -347,4 +446,9 @@ function main() {
   }
 }
 
-main();
+if (isMainThread) {
+  await main();
+} else {
+  workerMain();
+}
+

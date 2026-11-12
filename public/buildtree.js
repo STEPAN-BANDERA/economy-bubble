@@ -261,6 +261,9 @@ function planOneTree(tree, className, evaluate, effectMatters, budget, forbidden
   const usedOptions = new Set();
   const socketed = []; // {socket, kind: 'rare' | 'cluster', name}
   let clustersUsed = 0;
+  let timelessUsed = false;
+  const conquered = new Map(); // keystone node id -> the timeless keystone it became
+  const socketEffects = new Map(); // socket id -> the effects of the jewel in it (to swap a rare jewel out)
   let valueOfJewel = null;
   let points = 0;
   let gains = null;
@@ -296,7 +299,7 @@ function planOneTree(tree, className, evaluate, effectMatters, budget, forbidden
     for (const id of reachable) {
       const node = tree.nodes.get(id);
       if (node.kind === 'jewel' && jewels) {
-        const candidate = jewelCandidate(tree, node, parent, allocated, gains, jewels, clustersUsed, valueOfJewel);
+        const candidate = jewelCandidate(tree, node, parent, allocated, gains, jewels, clustersUsed, valueOfJewel, timelessUsed);
         if (candidate && points + candidate.path.length + candidate.choice.points <= budget
           && (best === null || candidate.perPoint > best.perPoint)) {
           best = candidate;
@@ -324,6 +327,12 @@ function planOneTree(tree, className, evaluate, effectMatters, budget, forbidden
         best = candidate;
       }
     }
+    if (jewels && !timelessUsed) {
+      const swap = timelessSwapCandidate(tree, socketed, socketEffects, parent, allocated, allocatedEffects, jewels, evaluate);
+      if (swap !== null && points + swap.path.length <= budget && (best === null || swap.perPoint > best.perPoint)) {
+        best = swap;
+      }
+    }
     if (best === null || best.perPoint < MIN_GAIN_PER_POINT) {
       break;
     }
@@ -339,19 +348,38 @@ function planOneTree(tree, className, evaluate, effectMatters, budget, forbidden
     }
     for (const step of best.path) {
       allocated.add(step);
-      allocatedEffects.push(tree.nodes.get(step).effects);
+      if (step !== best.conquered) {
+        allocatedEffects.push(tree.nodes.get(step).effects); // a conquered keystone gives the timeless keystone instead
+      }
       if (tree.nodes.get(step).kind === 'keystone') {
         pointsAtMeasure = -Infinity; // a keystone changes how everything else is worth: measure again
       }
     }
     points += best.path.length;
+    if (best.conquered && allocatedEffects.includes(tree.nodes.get(best.conquered).effects)) {
+      allocatedEffects.splice(allocatedEffects.indexOf(tree.nodes.get(best.conquered).effects), 1);
+    }
+    if (best.replaces) {
+      allocatedEffects.splice(allocatedEffects.indexOf(best.replaces.effects), 1);
+      socketed.splice(socketed.indexOf(best.replaces.entry), 1);
+    }
     if (best.choice) {
       allocatedEffects.push(best.choice.effects);
+      socketEffects.set(best.socket, best.choice.effects);
       points += best.choice.points;
-      socketed.push({ socket: best.socket, kind: best.choice.kind, name: best.choice.name });
+      const entry = { socket: best.socket, kind: best.choice.kind, name: best.choice.name };
       if (best.choice.kind === 'cluster') {
         clustersUsed += 1;
       }
+      if (best.choice.kind === 'timeless') {
+        timelessUsed = true;
+        conquered.set(best.conquered, best.choice.keystone);
+        entry.conquers = tree.nodes.get(best.conquered).name;
+        entry.keystone = best.choice.keystone;
+        entry.name = best.choice.name + ' (conquers ' + entry.conquers + '; seed effects on other passives not planned)';
+        pointsAtMeasure = -Infinity; // a new keystone changes how everything else is worth
+      }
+      socketed.push(entry);
     }
     if (best.mastery !== null) {
       takenMasteries.set(best.mastery.id, best.option);
@@ -363,14 +391,15 @@ function planOneTree(tree, className, evaluate, effectMatters, budget, forbidden
       }
     }
   }
-  const summary = summarise(tree, allocated, allocatedEffects, points, takenMasteries);
+  const summary = summarise(tree, allocated, allocatedEffects, points, takenMasteries, conquered);
   summary.jewels = socketed;
   return summary;
 }
 
 // A jewel socket as a target: the path to it, then the best of what can go in it (the rare jewel anywhere, a large
-// cluster jewel in an outer socket while fewer than the allowed number are used).
-function jewelCandidate(tree, node, parent, allocated, gains, jewels, clustersUsed, valueOfJewel) {
+// cluster jewel in an outer socket while fewer than the allowed number are used, a timeless jewel where a keystone is
+// in its radius and none is used yet).
+function jewelCandidate(tree, node, parent, allocated, gains, jewels, clustersUsed, valueOfJewel, timelessUsed) {
   const path = pathTo(node.id, parent, allocated);
   if (path.length === 0) {
     return null;
@@ -390,7 +419,97 @@ function jewelCandidate(tree, node, parent, allocated, gains, jewels, clustersUs
       best = { perPoint, path, mastery: null, choice, socket: node.id };
     }
   }
+  if (!timelessUsed) {
+    const timeless = timelessCandidate(tree, node, path, parent, allocated, gains, jewels, valueOfJewel);
+    if (timeless !== null && (best === null || timeless.perPoint > best.perPoint)) {
+      best = timeless;
+    }
+  }
   return best;
+}
+
+// A timeless jewel in this socket conquers a keystone in its radius: that keystone becomes one of the jewel's
+// conquerors' keystones (Lethal Pride's Strength of Blood). The keystone must be allocated, so its path is part of
+// the cost, and its own effect is replaced, so it isn't counted. Only one timeless jewel fits a build (they are
+// "Historic", limited to one). What the jewel does to the other passives in its radius depends on its seed and isn't
+// modelled: this is the keystone alone.
+function timelessCandidate(tree, socket, socketPath, parent, allocated, gains, jewels, valueOfJewel) {
+  const nearby = tree.keystonesNearSocket?.get(socket.id);
+  if (!jewels.timeless || jewels.timeless.length === 0 || !nearby) {
+    return null;
+  }
+  let best = null;
+  for (const keystoneId of nearby) {
+    if (allocated.has(keystoneId) || !parent.has(keystoneId)) {
+      continue; // a keystone already taken keeps its own effect; one out of reach waits
+    }
+    const path = unionOfPaths(socketPath, pathTo(keystoneId, parent, allocated));
+    const pathWithoutKeystone = path.filter(id => id !== keystoneId);
+    const valueOfPath = pathValue(tree, pathWithoutKeystone, gains);
+    for (const choice of jewels.timeless) {
+      const perPoint = (valueOfPath + valueOfJewel(choice)) / (path.length + choice.points);
+      if (best === null || perPoint > best.perPoint) {
+        best = { perPoint, path, mastery: null, choice, socket: socket.id, conquered: keystoneId };
+      }
+    }
+  }
+  return best;
+}
+
+// A rare jewel already socketed swapped for a timeless jewel: the planner fills sockets with rare jewels early, and
+// an allocated socket isn't a target again, so the timeless jewel is weighed here as a replacement. Its cost is the
+// path to the keystone it conquers; its gain is measured exactly, without the rare jewel and its keystone's own effect.
+function timelessSwapCandidate(tree, socketed, socketEffects, parent, allocated, allocatedEffects, jewels, evaluate) {
+  if (!jewels.timeless || jewels.timeless.length === 0 || !tree.keystonesNearSocket) {
+    return null;
+  }
+  const base = evaluate(mergeEffects(allocatedEffects));
+  if (!(base > 0)) {
+    return null;
+  }
+  let best = null;
+  for (const entry of socketed) {
+    const nearby = tree.keystonesNearSocket.get(entry.socket);
+    if (entry.kind !== 'rare' || !nearby) {
+      continue;
+    }
+    const rareEffects = socketEffects.get(entry.socket);
+    for (const keystoneId of nearby) {
+      const alreadyTaken = allocated.has(keystoneId);
+      if (!alreadyTaken && !parent.has(keystoneId)) {
+        continue;
+      }
+      // A keystone the tree already holds can be conquered too: its own effect goes, the conqueror's comes.
+      const keystoneEffects = tree.nodes.get(keystoneId).effects;
+      const withoutRare = allocatedEffects.filter(effects => effects !== rareEffects && !(alreadyTaken && effects === keystoneEffects));
+      const path = alreadyTaken ? [] : pathTo(keystoneId, parent, allocated);
+      const pathEffects = [];
+      for (const id of path) {
+        if (id !== keystoneId) {
+          pathEffects.push(tree.nodes.get(id).effects);
+        }
+      }
+      for (const choice of jewels.timeless) {
+        const score = evaluate(mergeEffects([...withoutRare, ...pathEffects, choice.effects]));
+        const perPoint = (score / base - 1) / Math.max(1, path.length);
+        if (best === null || perPoint > best.perPoint) {
+          best = { perPoint, path, mastery: null, choice, socket: entry.socket, conquered: keystoneId,
+            replaces: { entry, effects: rareEffects } };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function unionOfPaths(first, second) {
+  const union = [...first];
+  for (const id of second) {
+    if (!union.includes(id)) {
+      union.push(id);
+    }
+  }
+  return union;
 }
 
 // The score gain per point of taking the step (its path, and its mastery option if any), measured exactly.
@@ -399,9 +518,21 @@ function exactGainPerPoint(step, allocatedEffects, evaluate, tree) {
   if (before <= 0) {
     return 0;
   }
-  const added = [...allocatedEffects];
+  const added = [];
+  const conqueredEffects = step.conquered ? tree.nodes.get(step.conquered).effects : null;
+  for (const effects of allocatedEffects) {
+    if (step.replaces && effects === step.replaces.effects) {
+      continue;
+    }
+    if (effects === conqueredEffects) {
+      continue; // a conquered keystone already on the tree gives the timeless keystone instead
+    }
+    added.push(effects);
+  }
   for (const id of step.path) {
-    added.push(tree.nodes.get(id).effects);
+    if (id !== step.conquered) {
+      added.push(tree.nodes.get(id).effects);
+    }
   }
   let points = step.path.length;
   if (step.mastery !== null) {
@@ -412,7 +543,8 @@ function exactGainPerPoint(step, allocatedEffects, evaluate, tree) {
     added.push(step.choice.effects);
     points += step.choice.points;
   }
-  return (evaluate(mergeEffects(added)) / before - 1) / points;
+  // A swap that conquers a keystone already on the tree costs no point; it is measured as one.
+  return (evaluate(mergeEffects(added)) / before - 1) / Math.max(1, points);
 }
 
 // A mastery as a target: the path to its nearest unlocking notable (empty when one is taken), then the mastery's
@@ -434,13 +566,13 @@ function masteryCandidate(tree, mastery, distance, parent, allocated, takenMaste
   return { perPoint, path, mastery, option: choice.option, choice: null };
 }
 
-function summarise(tree, allocated, allocatedEffects, points, takenMasteries) {
+function summarise(tree, allocated, allocatedEffects, points, takenMasteries, conquered = new Map()) {
   const keystones = [];
   const notables = [];
   for (const id of allocated) {
     const node = tree.nodes.get(id);
     if (node.kind === 'keystone') {
-      keystones.push(node.name);
+      keystones.push(conquered.get(id) || node.name);
     } else if (node.kind === 'notable') {
       notables.push(node.name);
     }

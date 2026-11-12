@@ -5,6 +5,8 @@
 import { IDEA_QUESTION_IDS, ideaTraits, matchesAnswer } from './builds.js';
 import { PLAYER_BANDS, prepareMechanics, rebuildFromNames, evaluateBuild, pieceGains, describeEffect, typesWithSupports } from './buildgen.js';
 import { treeView } from './buildtreeview.js';
+import { scoreFunctionFor } from './buildstages.js';
+import { GEAR_LEVELS, DEFAULT_GEAR_LEVEL, craftQuery, rebuildGear, compactGear } from './buildgear.js';
 
 const DATA = 'data/builds/';
 const FIRST_IDEAS = 12;
@@ -22,6 +24,7 @@ const I = {
   shown: FIRST_IDEAS,
   open: new Set(), // ideas whose "why" is unfolded
   traits: new Map(),
+  rebuilt: new Map(), // an open "why"'s build, rebuilt once (its tree takes about a second to plan)
 };
 
 // ---------- loading ----------
@@ -33,19 +36,74 @@ async function fetchJson(path) {
   return response.json();
 }
 
+// The generated file keeps each rare item as its base and affix ids (storeGear); the cards want the affixes' text and
+// tiers, which come back from the gear data. Without the gear data the cards show no rare items.
+function expandStoredGear(generated, index) {
+  for (const build of generated.builds) {
+    if (!build.gear) {
+      continue;
+    }
+    build.gear = index.gear ? compactGear(rebuildGear(build.gear, index.gear)) : null;
+  }
+}
+
 async function load() {
   I.status = 'loading';
   try {
-    const [generated, mechanics, tree] = await Promise.all([
-      fetchJson('generated-poe1.json'), fetchJson('mechanics-poe1.json'), fetchJson('tree-poe1.json')]);
+    const [generated, index] = await Promise.all([fetchJson('generated-poe1.json'), loadIndex()]);
+    expandStoredGear(generated, index);
     I.generated = generated;
-    I.index = prepareMechanics(mechanics, tree);
     I.status = 'ready';
   } catch (error) {
     I.status = 'failed';
     I.error = error.message;
   }
   X.rerender();
+}
+
+// The rare-gear affixes from the crafting data (public/data/craft/gear-poe1.json), or null where the site was built
+// without it: cards then show no rare items, and the engine uses its fixed gear figures.
+async function fetchGear() {
+  try {
+    const response = await fetch('data/craft/gear-poe1.json');
+    return response.ok ? await response.json() : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// The mechanics and the tree, prepared once: the ideas view and the build planner (public/buildplanner.js) share
+// them, the planner without the precomputed ideas.
+let indexLoading = null;
+function loadIndex() {
+  if (indexLoading === null) {
+    indexLoading = Promise.all([fetchJson('mechanics-poe1.json'), fetchJson('tree-poe1.json'), fetchGear()]).then(([mechanics, tree, gear]) => {
+      I.index = prepareMechanics(mechanics, tree, gear);
+      return I.index;
+    });
+    indexLoading.catch(() => {
+      indexLoading = null; // a later call tries again
+    });
+  }
+  return indexLoading;
+}
+
+// For the build planner: the prepared index, loading it if needed (a promise).
+export function sharedIndex(helpers) {
+  X = helpers;
+  return loadIndex();
+}
+
+// The plan the cards show, 'power' or 'value', and switching it (the planner has its own switch).
+export function ideaPlan() {
+  if (I.plan === null) {
+    I.plan = savedPlan();
+  }
+  return I.plan;
+}
+
+export function chooseIdeaPlan(plan) {
+  choosePlan(plan);
 }
 
 function savedPlan() {
@@ -258,9 +316,11 @@ function ideasList(fitting) {
     X.el('div', { class: 'bm-cards' }, cards), more);
 }
 
-export function ideaCard(storedIdea, extraClass = '') {
+// extraSections are shown above "Why these pieces" (the build planner adds its stages there). A planned card
+// (idea.planned) has no fit, since nothing was precomputed to compare it with.
+export function ideaCard(storedIdea, extraClass = '', extraSections = []) {
   const idea = planOf(storedIdea);
-  const key = idea.ascendancy + '|' + idea.skill;
+  const key = (idea.planned ? 'planned|' : '') + idea.ascendancy + '|' + idea.skill + (idea.variantKey ? '|' + idea.variantKey : '');
   const open = I.open.has(key);
   const band = PLAYER_BANDS.find(entry => entry.id === idea.band) ?? PLAYER_BANDS[0];
   const weaponText = idea.weapon && idea.weapon !== 'none' ? WEAPON_WORDS[idea.weapon] ?? idea.weapon : null;
@@ -269,13 +329,15 @@ export function ideaCard(storedIdea, extraClass = '') {
   if (idea.pastPlayers > 0) {
     facts.push(X.el('span', { class: 'bm-trait proven', title: 'Characters with this ascendancy and skill in past leagues' }, X.plural(idea.pastPlayers, 'player') + ' last league'));
   }
-  facts.push(X.el('span', { class: 'bm-trait', title: 'Score of this build over the median score of the same skill across all ascendancies' }, 'fits ' + idea.fit.toFixed(2) + '× better'));
+  if (typeof idea.fit === 'number') {
+    facts.push(X.el('span', { class: 'bm-trait', title: 'Score of this build over the median score of the same skill across all ascendancies' }, 'fits ' + idea.fit.toFixed(2) + '× better'));
+  }
   if (weaponText) {
     facts.push(X.chip(weaponText));
   }
   facts.push(X.chip(idea.crit ? 'Crit' : 'No crit'));
   if (typeof idea.cost === 'number') {
-    facts.push(X.el('span', { class: 'bm-trait', title: costTitle() }, 'uniques ' + costText(idea.cost)));
+    facts.push(X.el('span', { class: 'bm-trait', title: costTitle(idea) }, 'uniques ' + costText(idea.cost)));
   }
   if (idea.powerPlanScore) {
     facts.push(X.el('span', { class: 'bm-trait', title: 'The value plan’s power over the power plan’s' },
@@ -293,12 +355,46 @@ export function ideaCard(storedIdea, extraClass = '') {
     masteryLine(idea),
     pieceLine('Jewels', idea.treeJewels),
     pieceLine('Uniques', idea.uniques),
+    gearSection(idea),
     pieceLine('Auras, curse', idea.buffs),
+    pieceLine('Stacks', idea.stacking ? [STACKING_WORDS[idea.stacking] || idea.stacking] : null),
+    reservedLine(idea),
     pieceLine('Flasks', idea.flasks),
+    ...extraSections,
     X.el('button', { type: 'button', class: 'linklike bm-why-toggle', 'aria-expanded': open ? 'true' : 'false', onclick: () => toggleOpen(key) },
       open ? 'Hide why' : 'Why these pieces'),
     open ? whySection(idea) : null,
     X.el('a', { class: 'bm-link-out', href: ninjaLink(idea), target: '_blank', rel: 'noopener' }, 'Check on poe.ninja ↗'));
+}
+
+const SLOT_WORDS = { body: 'Body armour', helmet: 'Helmet', gloves: 'Gloves', boots: 'Boots', belt: 'Belt', amulet: 'Amulet',
+  ring: 'Ring', offhand: 'Shield', quiver: 'Quiver' };
+
+// The solved rare items: each slot with its affixes (tier 1 is the best an item level 84 base rolls), and a link
+// that opens the Crafting tab with them as targets to plan and price the craft there.
+function gearSection(idea) {
+  if (!idea.gear || !idea.gear.items || idea.gear.items.length === 0) {
+    return null;
+  }
+  const rows = [];
+  for (const item of idea.gear.items) {
+    const affixes = [];
+    for (const affix of item.affixes) {
+      affixes.push(X.el('li', {}, affix.text, X.el('span', { class: 'muted' }, ' T' + affix.tier)));
+    }
+    rows.push(X.el('div', { class: 'bm-gear-item' },
+      X.el('div', { class: 'bm-gear-head' },
+        X.el('strong', {}, SLOT_WORDS[item.slot] || item.slot),
+        X.el('a', { class: 'linklike', href: craftQuery(item), title: 'Open the Crafting tab with these affixes as targets' }, 'Craft it')),
+      X.el('ul', { class: 'bm-gear-affixes' }, affixes)));
+  }
+  return X.el('details', { class: 'bm-gear' },
+    X.el('summary', {}, X.el('span', { class: 'bm-list-label' }, 'Rare gear'), ' ', idea.gear.items.length + ' items, ' + gearLevelLabel(idea.gear.level)),
+    X.el('div', { class: 'bm-gear-grid' }, rows));
+}
+
+function gearLevelLabel(level) {
+  return (GEAR_LEVELS[level] || GEAR_LEVELS[DEFAULT_GEAR_LEVEL]).label.toLowerCase() + ' affixes';
 }
 
 const WEAPON_WORDS = { staff: 'Staff', wand: 'Wand', bow: 'Bow', sword: 'Sword', axe: 'Axe', mace: 'Mace or sceptre', claw: 'Claw', dagger: 'Dagger', shield: 'Shield' };
@@ -311,7 +407,10 @@ function costText(divines) {
   return '≈ ' + Math.round(divines) + ' div';
 }
 
-function costTitle() {
+function costTitle(idea) {
+  if (idea.planned) {
+    return 'What the uniques cost now (poe.ninja); a unique poe.ninja does not list counts as 20 Divines. The value plan picks each unique for its gain over its price; the power plan never weighs prices.';
+  }
   const prices = I.generated.prices;
   const source = prices ? ' (poe.ninja, ' + prices.from + ', ' + prices.fetched.slice(0, 10) + ')' : '';
   return 'What the uniques cost when these ideas were made' + source + '; a unique poe.ninja does not list counts as 20 Divines. The value plan picks each unique for its gain over its price; the power plan never weighs prices.';
@@ -322,6 +421,21 @@ function playersText(idea) {
     return 'Nobody plays it';
   }
   return X.plural(idea.players, 'player') + ' now';
+}
+
+// The stat a build committed to stacking from the start (public/buildgen.js, STACKING_EXTRA).
+const STACKING_WORDS = { mana: 'mana', life: 'life', energyShield: 'energy shield', armour: 'armour', evasion: 'evasion' };
+
+// How much of mana and life its buffs reserve, after reservation efficiency.
+function reservedLine(idea) {
+  const parts = [];
+  if (idea.reserved > 0) {
+    parts.push(Math.round(idea.reserved) + '% of mana');
+  }
+  if (idea.reservedLife > 0) {
+    parts.push(Math.round(idea.reservedLife) + '% of life');
+  }
+  return parts.length > 0 ? pieceLine('Reserved', parts) : null;
 }
 
 function pieceLine(label, names) {
@@ -377,8 +491,24 @@ function toggleOpen(key) {
 }
 
 // What each piece adds, worked out again here with the same engine that chose it.
+// The build behind a card, rebuilt from its names once. A build planner card plans its tree by its own stage weights.
+function rebuiltBuild(idea) {
+  const key = JSON.stringify([idea.ascendancy, idea.skill, idea.weapon, idea.supports, idea.notables, idea.uniques, idea.buffs, idea.flasks, idea.weights || null, Boolean(idea.wide)]);
+  if (!I.rebuilt.has(key)) {
+    const options = {};
+    if (idea.planned && idea.weights) {
+      options.scoreOf = scoreFunctionFor(idea.weights);
+    }
+    if (idea.planned && idea.wide) {
+      options.wide = true;
+    }
+    I.rebuilt.set(key, rebuildFromNames(idea, I.index, options));
+  }
+  return I.rebuilt.get(key);
+}
+
 function whySection(idea) {
-  const build = rebuildFromNames(idea, I.index);
+  const build = rebuiltBuild(idea);
   if (!build) {
     return X.el('p', { class: 'muted' }, 'This build names a piece the current game data no longer has; rebuild the data.');
   }
@@ -423,5 +553,6 @@ function dpsText(dps) {
 
 function ninjaLink(idea) {
   const query = new URLSearchParams({ class: idea.ascendancy, skills: idea.skill });
-  return 'https://poe.ninja/poe1/builds/' + encodeURIComponent(I.generated.leagueUrl) + '?' + query.toString();
+  const leagueUrl = idea.leagueUrl || I.generated.leagueUrl;
+  return 'https://poe.ninja/poe1/builds/' + encodeURIComponent(leagueUrl) + '?' + query.toString();
 }

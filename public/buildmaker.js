@@ -6,6 +6,7 @@ import {
   optionsFor, consistentAnswers, rankArchetypes, spinWheel, mulberry32, encodeAnswers, decodeAnswers,
 } from './builds.js';
 import { ideasView, ideaCard, ideaWheelCandidates, ideasReady } from './buildideas.js';
+import { plannerView } from './buildplanner.js';
 
 const DATA = 'data/builds/';
 // The poe.ninja proxy (functions/api/ninja) serves these; together they hold every wearable unique.
@@ -31,9 +32,10 @@ const S = {
   shown: FIRST_RESULTS,
   wheel: null, // { candidates, winnerIndex, nicheOnly, startAngle, angle, startedAt, landed }
   wheelRestingAngle: 0, // where the last spin stopped, so the next one turns on from there
-  view: null, // 'ideas' (the generator's builds) or 'played' (poe.ninja's archetypes)
+  view: null, // 'plan' (the build planner), 'ideas' (the generator's precomputed builds) or 'played' (poe.ninja's archetypes)
 };
 const VIEWS = [
+  { id: 'plan', label: 'Plan a build', title: 'Choose at least two limits; our planner composes the builds that fit, now' },
   { id: 'ideas', label: 'Our ideas', title: 'Builds our generator composes from the game\'s mechanics, checked against poe.ninja' },
   { id: 'played', label: 'What people play', title: 'poe.ninja\'s archetypes, narrowed down by your answers' },
 ];
@@ -256,7 +258,9 @@ function viewSwitch() {
 }
 
 function ideaHelpers() {
-  return { el: X.el, rerender: X.rerender, store: X.store, chip, plural, percent };
+  return { el: X.el, rerender: X.rerender, store: X.store, chip, plural, percent,
+    populations: () => S.current?.populations || {}, leagueUrl: () => S.current?.leagueUrl || '',
+    prices: () => (S.prices.status === 'ready' ? S.prices.byName : null), divineChaos };
 }
 
 // ---------- the panel ----------
@@ -278,7 +282,12 @@ export function buildMakerPanel(helpers) {
     S.answers = consistentAnswers(S.archetypes, withoutSkipped(readSavedAnswers()));
   }
   if (S.view == null) {
-    S.view = X.store.get('buildView', 'ideas') === 'played' ? 'played' : 'ideas';
+    const saved = X.store.get('buildView', 'plan');
+    S.view = VIEWS.some(view => view.id === saved) ? saved : 'plan';
+  }
+  if (S.view === 'plan') {
+    // The planner asks its own limits; the question chain belongs to the other two views.
+    return [viewSwitch(), ...plannerView(ideaHelpers())];
   }
 
   const answers = filteringAnswers();

@@ -863,3 +863,24 @@ ol.luggage { margin: 6px 0 10px; padding-left: 22px; line-height: 1.6; }
 .tv-mastery.on { fill: var(--panel-2); stroke: var(--src-bench); stroke-width: 12; stroke-dasharray: none; }
 .tv-tip { position: absolute; z-index: 2; max-width: 240px; padding: 6px 8px; border: 1px solid var(--frame); border-radius: 4px; background: var(--panel); color: var(--ink); font-size: 12px; line-height: 1.35; pointer-events: none; }
 .tv-tip strong { display: block; color: var(--name); margin-bottom: 2px; }
+
+/* Build planner ("Plan a build"): limits, stage weights, and the planned cards' extra lines. */
+.bm-planner-limits, .bm-planner-stages { margin: 0 0 14px; }
+.bm-planner-limits h3, .bm-planner-stages h3 { margin: 0 0 6px; }
+.bm-planner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 14px; margin: 0 0 8px; }
+.bm-planner-limit { display: flex; flex-direction: column; gap: 3px; }
+.bm-planner-limit select { width: 100%; }
+.bm-planner-stages > .bm-planner-limit { max-width: 220px; margin: 0 0 6px; }
+.bm-planner-stage { display: grid; grid-template-columns: 7em 1fr 3em; align-items: center; gap: 6px; }
+.bm-planner-stage input[type="range"] { width: 100%; accent-color: var(--frame-hi); }
+.bm-planner-weight { color: var(--ink-2); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.bm-planner-start { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.bm-planner-tags { font-size: 12px; margin: 6px 0 0; }
+
+/* Solved rare gear on a build card (public/buildideas.js, gearSection). */
+.bm-gear { margin: 4px 0; }
+.bm-gear > summary { cursor: pointer; }
+.bm-gear-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 6px; }
+.bm-gear-item { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; background: var(--panel-2); }
+.bm-gear-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.bm-gear-affixes { margin: 4px 0 0; padding-left: 16px; font-size: 12px; line-height: 1.45; }

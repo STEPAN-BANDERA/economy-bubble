@@ -22,6 +22,10 @@
   `public/data/builds/` is CC BY-NC-SA, not MIT, and holds aggregates only, never player or account names.
   Its game data comes only from public sources anyone can reach (GGG's tree export and game files, poewiki.net,
   via `scripts/build_sources.py`); never read a private repository or local-only files, so every clone can rebuild.
+  Rare gear relies on the Crafting tab's modifier data (`public/data/craft/`, built from Craft of Exile's public files
+  by `npm run craft:build`): `scripts/build_gear_mods.py` turns it into `public/data/craft/gear-poe1.json` for the gear
+  solver (`public/buildgear.js`). Like the rest of `public/data/craft/` it isn't committed, and the generator must keep
+  working without it (the fixed gear figures).
 - Build generator: two separate scores. The power score is the original, price-blind plan; poe.ninja's build data
   (player counts, archetypes) only reviews it and is never an input to it. The value score is a second plan whose
   pieces are chosen with poe.ninja's item prices (`scripts/fetch_unique_prices.py`); prices never reach the power
@@ -32,6 +36,10 @@
   model change, rerun `node scripts/generate_builds.mjs` and compare its calibration line (favourite ascendancy in
   the top 3) with README's figure: a change that lowers it needs a reason. Don't hammer poe.ninja: character
   sampling is off by default because it triggers HTTP 429; use `fetch_build_meta.py --cached` to rebuild offline.
+- Build planner (`public/buildtags.js`, `public/buildstages.js`, `public/buildsearch.js`, `public/build-worker.js`,
+  `public/buildplanner.js`): tags and every calculation are ours. Path of Building is a consultant like poe.ninja:
+  `npm run check:pob` compares our stat-line reading with its ModCache, and nothing from it enters our data or
+  scores. The stage weights' defaults must keep the total equal to the power score (tested).
 - After any change to the crafting engine (`public/craft.js`, `public/craft-worker.js`) run
   `npm run test:craft`: two fixed wands at frozen prices must cost the same as the baseline
   (`scripts/craft-regression/`). A plan that got dearer is a regression; one that got cheaper must be

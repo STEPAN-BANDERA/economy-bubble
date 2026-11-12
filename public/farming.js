@@ -58,6 +58,15 @@ export const PAST_LEAGUES = [
   { name: 'Mirage', historyFile: 'data/ninja-history/mirage.json', startHour: 1772827200, lastDay: '2026-07-20' },
 ];
 
+// 3.30 (Covens of Umbra) removes scarabs from the game and adds Threads in their place, one type per primary league
+// mechanic, up to eight per map (GGG's 3.30.0 patch notes, Endgame Changes). Each card keeps its 3.29 scarab loadout
+// for replays of older leagues and lists its Threads beside it. Prepared before launch, so it stays off until then:
+// on launch day set THREADS_ARE_LIVE to true and, if GGG's league name differs, correct SCARABS_REMOVED_IN_LEAGUE
+// (it must match the name the league gets in PAST_LEAGUES once it ends).
+export const THREADS_ARE_LIVE = false;
+export const SCARABS_REMOVED_IN_LEAGUE = 'Covens of Umbra';
+const THREADS_ROUGH_NUMBERS = 'Scarabs are gone since 3.30: the Threads here stand in for them at 8 per map, the most that count, before any free Threads a Shaped Region gives. The yields were gathered with 3.29 scarab loadouts and the 3.29 Atlas tree, and nobody has measured them with Threads yet.';
+
 // The usual stages that fit the league, plus its last full day.
 export function pastLeagueStages(pastLeague) {
   const stages = [];
@@ -75,6 +84,8 @@ export function pastLeagueStages(pastLeague) {
 // ---------- the strategies ----------
 // Difficulty and investment are rough bands for sorting and colour, not maths.
 // scarabs / inputs: things you BUY and consume each run.
+// threads: what 3.30 loads in place of the scarabs (see THREADS_ARE_LIVE); empty when no Thread
+//   exists for the mechanic. Edits to them are kept apart from edits to the scarabs.
 // outputs: things you SELL each run.
 // A line names its item in one of these ways:
 //   { name / item }                  priced from the exchange by name
@@ -119,6 +130,7 @@ const STRATEGIES = [
       { name: 'Essence Scarab of Ascent', qty: 1 },
       { name: 'Essence Scarab', qty: 1 },
     ],
+    threads: [],
     inputs: [
       { name: 'Vaal Orb', qty: 2 },
     ],
@@ -145,6 +157,7 @@ const STRATEGIES = [
       { name: 'Ambush Scarab of Hidden Compartments', qty: 1 },
       { name: 'Ambush Scarab of Potency', qty: 1 },
     ],
+    threads: [],
     inputs: [],
     outputs: [
       { item: 'Stacked Deck', qty: 2 },
@@ -167,6 +180,9 @@ const STRATEGIES = [
       { name: 'Ritual Scarab of Wisps', qty: 1 },
       { name: 'Ritual Scarab of Selectiveness', qty: 1 },
       { name: 'Ritual Scarab of Corpses', qty: 1 },
+    ],
+    threads: [
+      { name: 'Ritual Thread', qty: 8 },
     ],
     inputs: [],
     outputs: [
@@ -191,6 +207,9 @@ const STRATEGIES = [
       { name: 'Abyss Scarab of Multitudes', qty: 1 },
       { name: 'Abyss Scarab of the Consort', qty: 1 },
       { name: 'Scarab of Adversaries', qty: 1 },
+    ],
+    threads: [
+      { name: 'Abyss Thread', qty: 8 },
     ],
     inputs: [],
     outputs: [
@@ -222,6 +241,9 @@ const STRATEGIES = [
       { name: 'Legion Scarab', qty: 1 },
       { name: 'Legion Scarab of Eternal Conflict', qty: 1 },
     ],
+    threads: [
+      { name: 'Legion Thread', qty: 8 },
+    ],
     inputs: [],
     outputs: [
       { item: 'Timeless Karui Splinter', qty: 8 },
@@ -252,6 +274,9 @@ const STRATEGIES = [
       { name: 'Breach Scarab of Instability', qty: 2 },
       { name: 'Breach Scarab of the Marshal', qty: 1 },
     ],
+    threads: [
+      { name: 'Breach Thread', qty: 8 },
+    ],
     inputs: [],
     outputs: [
       { name: 'Ancient Wombgift', ninja: 'Wombgift', chaos: 9, qty: 4 },
@@ -278,6 +303,9 @@ const STRATEGIES = [
       { name: 'Expedition Scarab', qty: 1 },
       { name: 'Expedition Scarab of Verisium Powder', qty: 1 },
     ],
+    threads: [
+      { name: 'Expedition Thread', qty: 8 },
+    ],
     inputs: [],
     outputs: [
       { item: 'Exotic Coinage', qty: 2 },
@@ -298,6 +326,7 @@ const STRATEGIES = [
       { name: 'Delirium Scarab of Paranoia', qty: 3 },
       { name: 'Delirium Scarab of Mania', qty: 1 },
     ],
+    threads: [],
     inputs: [],
     outputs: [
       { item: 'Simulacrum Splinter', qty: 12 },
@@ -320,6 +349,9 @@ const STRATEGIES = [
       { name: 'Blight Scarab of Blooming', qty: 1 },
       { name: 'Blight Scarab of Invigoration', qty: 1 },
       { name: 'Blight Scarab of the Blightheart', qty: 1 },
+    ],
+    threads: [
+      { name: 'Blight Thread', qty: 8 },
     ],
     inputs: [],
     outputs: [
@@ -347,6 +379,7 @@ const STRATEGIES = [
     maps: 'Any map, layered under another scarab farm (Essence, Legion). Harbingers are fast and don\'t need a layout.',
     mapsPerHour: 10, mapCost: 2,
     scarabs: [],
+    threads: [],
     inputs: [],
     outputs: [
       { item: 'Ancient Orb', qty: 0.4 },
@@ -370,6 +403,9 @@ const STRATEGIES = [
       { name: 'Betrayal Scarab of the Allflame', qty: 1 },
       { name: 'Betrayal Scarab of Unbreaking', qty: 1 },
     ],
+    threads: [
+      { name: 'Betrayal Thread', qty: 8 },
+    ],
     inputs: [],
     outputs: [
       { item: 'Syndicate Medallion', qty: 0.08 },
@@ -392,6 +428,9 @@ const STRATEGIES = [
       { name: 'Incursion Scarab of Champions', qty: 1 },
       { name: 'Incursion Scarab of Invasion', qty: 1 },
     ],
+    threads: [
+      { name: 'Incursion Thread', qty: 8 },
+    ],
     inputs: [],
     outputs: [
       { label: 'Temple of Atzoatl (sold or run)', chaos: 400, qty: 0.2 },
@@ -413,6 +452,7 @@ const STRATEGIES = [
       { name: 'Beyond Scarab of Resurgence', qty: 1 },
       { name: 'Beyond Scarab of Haemophilia', qty: 1 },
     ],
+    threads: [],
     inputs: [],
     outputs: [
       { item: 'Tainted Chaos Orb', qty: 0.3 },
@@ -434,6 +474,7 @@ const STRATEGIES = [
       { name: 'Harvest Scarab of Doubling', qty: 1 },
       { name: 'Harvest Scarab', qty: 1 },
     ],
+    threads: [],
     inputs: [],
     outputs: [
       { item: 'Vivid Crystallised Lifeforce', qty: 900 },
@@ -454,6 +495,9 @@ const STRATEGIES = [
     scarabs: [
       { name: 'Ultimatum Scarab of Bribing', qty: 2 },
       { name: 'Domination Scarab', qty: 1 },
+    ],
+    threads: [
+      { name: 'Ultimatum Thread', qty: 8 },
     ],
     inputs: [],
     outputs: [
@@ -478,6 +522,9 @@ const STRATEGIES = [
     scarabs: [
       { name: 'Ultimatum Scarab of Catalysing', qty: 1 },
       { name: 'Ultimatum Scarab of Bribing', qty: 2 },
+    ],
+    threads: [
+      { name: 'Ultimatum Thread', qty: 8 },
     ],
     inputs: [],
     outputs: [
@@ -508,6 +555,9 @@ const STRATEGIES = [
       { name: 'Ultimatum Scarab of Inscription', qty: 1 },
       { name: 'Ultimatum Scarab of Bribing', qty: 2 },
     ],
+    threads: [
+      { name: 'Ultimatum Thread', qty: 8 },
+    ],
     inputs: [],
     outputs: [
       { label: 'Inscribed Ultimatums worth keeping', chaos: 20, qty: 4 },
@@ -529,6 +579,7 @@ const STRATEGIES = [
       { name: 'Sulphite Scarab', qty: 1 },
       { name: 'Sulphite Scarab of Fumes', qty: 1 },
     ],
+    threads: [],
     inputs: [],
     outputs: [
       { item: 'Aberrant Fossil', qty: 0.3 },
@@ -551,6 +602,7 @@ const STRATEGIES = [
       { name: 'Torment Scarab of Release', qty: 1 },
       { name: 'Torment Scarab of Peculiarity', qty: 1 },
     ],
+    threads: [],
     inputs: [],
     outputs: [
       { label: 'Tormented rare drops & currency', chaos: 14, qty: 1 },
@@ -570,6 +622,7 @@ const STRATEGIES = [
       { name: 'Cartography Scarab of Escalation', qty: 1 },
       { name: 'Cartography Scarab of Singularity', qty: 1 },
     ],
+    threads: [],
     inputs: [],
     outputs: [
       { label: 'Surplus maps (sold / sustained)', chaos: 130, qty: 1 },
@@ -590,6 +643,9 @@ const STRATEGIES = [
       { name: 'Abyss Scarab', qty: 2 },
       { name: 'Abyss Scarab of Multitudes', qty: 1 },
       { name: 'Influencing Scarab of Hordes', qty: 1 },
+    ],
+    threads: [
+      { name: 'Abyss Thread', qty: 8 },
     ],
     inputs: [
       { name: 'Maven\'s Chisel of Divination', qty: 1 },
@@ -616,6 +672,9 @@ const STRATEGIES = [
       { name: 'Ritual Scarab of Abundance', qty: 2 },
       { name: 'Ritual Scarab of Selectiveness', qty: 2 },
     ],
+    threads: [
+      { name: 'Ritual Thread', qty: 8 },
+    ],
     inputs: [
       { label: 'Blood-filled Vessel with 6 bosses (bought)', chaos: 15, qty: 1 },
     ],
@@ -641,6 +700,9 @@ const STRATEGIES = [
       { name: 'Bestiary Scarab of the Herd', qty: 3 },
       { name: 'Bestiary Scarab of Duplicating', qty: 1 },
     ],
+    threads: [
+      { name: 'Bestiary Thread', qty: 8 },
+    ],
     inputs: [],
     outputs: [
       { name: 'Craicic Croaker', ninja: 'Beast', chaos: 1250, qty: 0.05 },
@@ -665,6 +727,7 @@ const STRATEGIES = [
     maps: 'Uber Labyrinth. The layout changes daily at 00:00 UTC, so follow poelab.com\'s route for the day. Most runs take 4-5 minutes on a movement build. Bring cheap 20/20 or level 1 gems for the Font.',
     mapsPerHour: 10, mapCost: 2,
     scarabs: [],
+    threads: [],
     inputs: [
       { name: 'Offering to the Goddess', qty: 1 },
     ],
@@ -693,6 +756,7 @@ const STRATEGIES = [
     maps: 'Azurite Mine, at depth 500 at the very least and as deep as you can go without failing nodes. Take Primeval Ruins, Vaal Outposts, Abyssal Cities and Azurite Fissures; don\'t spend long travelling to poor nodes. Bank sulphite first (the Delve (Sulphite) card).',
     mapsPerHour: 1, mapCost: 100,
     scarabs: [],
+    threads: [],
     inputs: [],
     outputs: [
       { item: 'Hollow Fossil', qty: 4.9 },
@@ -765,6 +829,7 @@ const STRATEGIES = [
       { name: 'Scarab of the Sinistral', qty: 1 },
       { name: 'Scarab of the Dextral', qty: 1 },
     ],
+    threads: [],
     inputs: [
       { name: 'Nightmare Map', ninja: 'Map', chaos: 40, qty: 1 },
       ...NIGHTMARE_MAP_DEVICE,
@@ -909,6 +974,7 @@ const STRATEGIES = [
       },
     ],
     scarabs: [],
+    threads: [],
     notes: 'Eater, Exarch, Fear and Neglect can be killed without waiting out an invulnerability phase, so a dedicated 0 HP miner finishes them with one set of mines, about 15 kills an hour. Shaper, Elder and Sirus are about 10, Maven about 7, and Dread about 5 for its three phase mechanics. At 15 kills you need 60 fragments an hour, and fragment markets are small, so buying them all can push the price up. A Forbidden jewel is worth 10 Chaos to 10 Divines by its ascendancy notable, so it\'s priced as the average across every notable, leaving out the dearest tenth, whose thin listings would otherwise decide the card. That assumes each notable drops equally often. Sublime Vision is a player\'s 1% per kill, and worth 1 to 400+ Divines by its aura, so its 20 Divines is a placeholder. Impossible Escape varies by keystone, and a player puts most near 1 Divine and a few near 10. Thread of Hope varies by ring size, with one poe.ninja price for all of them, and a player puts the Massive ring, which only Uber Sirus drops, at about 35 Chaos. poedb lists each Incarnation\'s uniques without saying which need the uber fight, and its Fear page says both four and five fragments (four is used here), so those three bosses are the roughest here. Their cheap prices hide some real value: Bound By Destiny has hundreds of combinations that one price can\'t capture, a good Betrayal\'s Sting can reach about 2 Divines, and some Dark Monarch variants are worth more. Legacy of the Rose and Bonemeld lose value fast through a league. Four fragments per entry is from poedb, and prices of what drops are live from poe.ninja. Chase uniques are assumed at 3%, since GGG publishes no drop rates; set your own numbers once you have some kills behind you. Rare variants such as a 6-link are priced as the plain unique.',
     roughNumbers: 'GGG publishes no drop rates and no measured table was found. Every chance per kill here is a guess, and the rarest drop decides whether a boss looks profitable. Kills per hour are a player\'s estimate, not a timed run.',
   },
@@ -920,6 +986,12 @@ function existsInViewedLeague(strategy) {
   if (!strategy.removedInLeague) {
     return true;
   }
+  return viewedLeagueIsOlderThan(strategy.removedInLeague);
+}
+
+// Whether the league being viewed is a replay of one older than `leagueName`. A name not yet in PAST_LEAGUES
+// is this league (or a later one), so every past league is older than it.
+function viewedLeagueIsOlderThan(leagueName) {
   if (!viewingPastLeague()) {
     return false;
   }
@@ -927,7 +999,40 @@ function existsInViewedLeague(strategy) {
   for (const pastLeague of PAST_LEAGUES) {
     leagueNames.push(pastLeague.name);
   }
-  return leagueNames.indexOf(X.stage.pastLeague) < leagueNames.indexOf(strategy.removedInLeague);
+  const removalPosition = leagueNames.indexOf(leagueName);
+  if (removalPosition < 0) {
+    return true;
+  }
+  return leagueNames.indexOf(X.stage.pastLeague) < removalPosition;
+}
+
+// Whether the map device still takes scarabs in the league being viewed.
+function scarabsExistInViewedLeague() {
+  if (!THREADS_ARE_LIVE) {
+    return true;
+  }
+  return viewedLeagueIsOlderThan(SCARABS_REMOVED_IN_LEAGUE);
+}
+
+// What a card loads into the map device in the league being viewed: its scarabs, or since 3.30 its Threads.
+function mapDeviceLoadout(strategy) {
+  if (scarabsExistInViewedLeague()) {
+    return { kind: 'scarab', lines: strategy.scarabs };
+  }
+  return { kind: 'thread', lines: strategy.threads || [] };
+}
+
+// Why a card's numbers are rough, if they are. Since 3.30 every card that loaded scarabs is, until someone
+// measures it again with Threads.
+function roughNumbersOf(strategy) {
+  const usedScarabs = strategy.scarabs && strategy.scarabs.length > 0;
+  if (scarabsExistInViewedLeague() || !usedScarabs) {
+    return strategy.roughNumbers || null;
+  }
+  if (strategy.roughNumbers) {
+    return strategy.roughNumbers + ' ' + THREADS_ROUGH_NUMBERS;
+  }
+  return THREADS_ROUGH_NUMBERS;
 }
 
 // A plain list with every variant farm resolved to the variant in play, leaving out
@@ -1037,7 +1142,7 @@ function pinVariant(strategy) {
 
 // ---------- per-viewer overrides ----------
 // Shape in storage: { [strategyId]: { mapsPerHour, mapCost,
-//   scarab: {index: qty}, input: {index: qty}, output: {index: qty},
+//   scarab: {index: qty}, thread: {index: qty}, input: {index: qty}, output: {index: qty},
 //   inputChaos: {index: chaosPerUnit}, outputChaos: {index: chaosPerUnit} } }.
 // Only changed values are kept.
 function loadOverrides() {
@@ -1489,7 +1594,8 @@ function loadoutCost(strategy) {
       lines.push(line);
     }
   };
-  addBought('scarab', strategy.scarabs);
+  const deviceLoadout = mapDeviceLoadout(strategy);
+  addBought(deviceLoadout.kind, deviceLoadout.lines);
   addBought('input', strategy.inputs);
   return { total, lines, unpriced };
 }
@@ -1793,8 +1899,9 @@ function rankingNameCell(strategy) {
   if (strategy.variantName) {
     parts.push(X.el('span', { class: 'muted small' }, ' ', strategy.variantName));
   }
-  if (strategy.roughNumbers) {
-    parts.push(' ', X.el('span', { class: 'farm-band band-rough', title: strategy.roughNumbers }, 'Rough'));
+  const roughNumbers = roughNumbersOf(strategy);
+  if (roughNumbers) {
+    parts.push(' ', X.el('span', { class: 'farm-band band-rough', title: roughNumbers }, 'Rough'));
   }
   return X.el('td', { class: 'l farm-rank-strategy' }, parts);
 }
@@ -2027,8 +2134,9 @@ function strategyCard(strategy, econ, sortKey) {
     X.el('span', { class: 'farm-band ' + BAND_CLASS[strategy.difficulty], title: 'How demanding it is on your build and attention' }, strategy.difficulty, ' difficulty'),
     X.el('span', { class: 'farm-band ' + BAND_CLASS[strategy.investment], title: 'How much it costs to set up and run' }, strategy.investment, ' investment'),
   ];
-  if (strategy.roughNumbers) {
-    bandTags.push(X.el('span', { class: 'farm-band band-rough', title: strategy.roughNumbers }, 'Rough numbers'));
+  const roughNumbers = roughNumbersOf(strategy);
+  if (roughNumbers) {
+    bandTags.push(X.el('span', { class: 'farm-band band-rough', title: roughNumbers }, 'Rough numbers'));
   }
   const header = X.el('div', { class: 'farm-head' },
     X.el('h3', {}, strategy.name),
@@ -2046,7 +2154,7 @@ function strategyCard(strategy, econ, sortKey) {
   loadoutTables(strategy, econ),
   worked(strategy, econ),
   X.el('p', { class: 'farm-notes' }, strategy.notes),
-  strategy.roughNumbers ? X.el('p', { class: 'farm-notes farm-rough-note' }, X.el('b', {}, 'Where the numbers come from: '), strategy.roughNumbers) : null,
+  roughNumbersOf(strategy) ? X.el('p', { class: 'farm-notes farm-rough-note' }, X.el('b', {}, 'Where the numbers come from: '), roughNumbersOf(strategy)) : null,
   X.el('button', { class: 'linklike', onclick: () => resetStrategy(strategy) }, 'Reset this strategy to the baseline'));
 
   return X.el('section', { class: 'farm-card', 'data-card-key': cardKey(strategy) }, header,

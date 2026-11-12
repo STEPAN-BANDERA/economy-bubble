@@ -28,7 +28,7 @@ const TOLERANCE = 0.005; // 0.5%
 // import() takes a URL, not a path: a bare Linux path happens to work, but a Windows one ("c:\...")
 // reads as a URL with the scheme "c:" and fails, so the path is turned into a file:// URL first.
 const craftEngineUrl = pathToFileURL(path.join(root, 'public', 'craft.js')).href;
-const { prepareBase, forBaseItem, plan, newItem, apply, gameRulesOf, partialLockOf, partialLockHitChance } = await import(craftEngineUrl);
+const { prepareBase, forBaseItem, plan, newItem, apply, gameRulesOf, partialLockOf, partialLockCoversAll } = await import(craftEngineUrl);
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -81,7 +81,9 @@ function planCosts(item) {
       targets: targetsFor(B, item),
       useFractured: item.targets.some(target => target[2] === 'fractured'),
       supply: {},
-      options: {},
+      // The page has the Allflame bench off for now (Vesper isn't in the game); the test keeps it on so the
+      // baseline still covers that part of the engine.
+      options: { allflame: true },
       phase: run.phase,
       sidePlans: run.sidePlans,
     };
@@ -191,8 +193,10 @@ function patchRuleChecks() {
   const covens = { ...index, dataLeague: 'Covens' };
   checks.push(['data without a league keeps the 3.29 Annul rule', gameRulesOf(index).annulRespectsTypeBlock || Boolean(index.dataLeague), '']);
   checks.push(['a league after Allflame drops it', !gameRulesOf(covens).annulRespectsTypeBlock, '']);
-  checks.push(['partial lock odds: 2 of 3 prefixes with a 2-lock is 1 in 3', Math.abs(partialLockHitChance(3, 2, 2) - 1 / 3) < 1e-9, '']);
-  checks.push(['partial lock odds: 1 of 3 with a 2-lock is 2 in 3', Math.abs(partialLockHitChance(3, 1, 2) - 2 / 3) < 1e-9, '']);
+  // The game doesn't show which mods a partial lock picked, so the planner only counts on one that holds every mod on
+  // its side.
+  checks.push(['a 2-lock surely protects 2 prefixes', partialLockCoversAll(2, 2), '']);
+  checks.push(['a 2-lock on 3 prefixes might miss one, so it is only a blind gamble', !partialLockCoversAll(3, 2), '']);
   const wand = items[1];
   const raw = readJson(path.join(root, 'public', 'data', 'craft', `base-${wand.baseId}.json`));
   const fullLock = raw.mods.find(row => row[7] && row[7].meta === 'nchg_pre');

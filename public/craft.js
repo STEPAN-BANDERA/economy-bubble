@@ -288,7 +288,7 @@ export function count(item, side) {
 // Rules that changed between patches, chosen by the league Craft of Exile's data covers (index.dataLeague, its
 // newest league). Data without that field, and the leagues below, are modelled as up to 3.29.
 // - annulRespectsTypeBlock: up to 3.29 an Orb of Annulment can't remove a mod that a bench "Cannot roll Caster
-//   Modifiers" (or Attack) protects. 3.30 ends that (patchnotes.txt, 3.30.0 Item Changes): Annulment then removes
+//   Modifiers" (or Attack) protects. 3.30 ends that (GGG's 3.30.0 patch notes, Item Changes): Annulment then removes
 //   caster or attack mods like any other, and "Cannot roll ..." + Annul is no longer a way to keep them.
 const LEAGUES_UP_TO_3_29 = new Set(['Allflame', 'Mirage', 'Phrecia2', 'Keepers', 'Mercenaries', 'Phrecia', 'Settlers',
   'Necropolis', 'Affliction', 'Ancestor', 'Crucible', 'Sanctum', 'Kalandra', 'Sentinel', 'Archnemesis', 'Scourge',
@@ -2429,8 +2429,11 @@ export function influenceExalt(influence) {
 
 // Harvest: reforge an influenced rare with at least one influenced mod (+ 1 Sacred Lifeforce; poedb).
 export const HARVEST_INFLUENCE = ['Primal', 5000];
+// The Allflame bench is off by default for now: Vesper, who runs it, isn't in the game (until further notice). It
+// stays as an option, with a warning when switched on (ALLFLAME_UNAVAILABLE).
+export const ALLFLAME_UNAVAILABLE = 'Vesper isn\'t in the game right now, so the Allflame bench can\'t be used: plans and outcomes that rely on it can\'t be crafted until she is back.';
 export const DEFAULT_OPTIONS = {
-  allflame: true, allflameK: 3, allflameUses: 2, allflameIntang: 12.5,
+  allflame: false, allflameK: 3, allflameUses: 2, allflameIntang: 12.5,
   supplyCheck: true, supplyShare: 10, playerSupply: 20, timeValue: 0,
   recombDust: 100000, recombGold: 50000, sulphur: 2000, sulphurFracture: 50000,
   hinekora: true, matron: true, beasts: true, topEssence: true,
@@ -2588,18 +2591,15 @@ export function partialLockOf(mod) {
   return { side: match[2].toLowerCase() === 'prefix' ? 'p' : 's', count: Number(match[1]) };
 }
 
-// The chance that `count` mods picked at random from `onSide` include `wanted` given ones:
-// C(onSide - wanted, count - wanted) / C(onSide, count).
-export function partialLockHitChance(onSide, wanted, count) {
-  if (wanted > count || wanted > onSide) {
-    return 0;
+// Whether a partial lock that holds `count` mods surely protects every one of the `onSide` mods on its side. The
+// game doesn't show which mods a partial lock picked, so a lock that might have missed a wanted mod can't be told
+// from one that didn't, and crafting it again until it looks right isn't possible. Only a lock with room for every
+// mod on its side is certain.
+export function partialLockCoversAll(onSide, count) {
+  if (onSide < 1) {
+    return false;
   }
-  const picks = Math.min(count, onSide);
-  let chance = 1;
-  for (let i = 0; i < wanted; i++) {
-    chance *= (picks - i) / (onSide - i);
-  }
-  return chance;
+  return onSide <= count;
 }
 
 // The bench metamod with this flag ('nchg_pre', 'no_attack', 'mul_mods', ...).
@@ -4308,6 +4308,29 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     return best;
   }
   const lockName = (lock, lockPriceInfo) => `"${lock.text}"${lockPriceInfo.via === 'bench' ? '' : ` via ${lockPriceInfo.via}`}`;
+
+  // The bench metamods sure to keep every mod on `protectedSide` (onProtected mods there now): "Prefixes/Suffixes
+  // Cannot Be Changed", and since 3.30 a partial lock ("2 Prefix Modifiers cannot be changed") with room for all
+  // of them. The game picks a partial lock's mods at random and doesn't show which, so it is only sure when it
+  // can hold the whole side; then it does what the full lock does, for 1 or 2 Divines instead of 4 and more. On
+  // a base with a short side (Simplex Amulet, Helical Ring, ...) that is every time. Each sits on the other side.
+  function sideLocks(protectedSide, onProtected) {
+    const locks = [];
+    const fullLock = findMetamod(B, protectedSide === 'p' ? 'nchg_pre' : 'nchg_suf');
+    if (fullLock) {
+      locks.push(fullLock);
+    }
+    for (const mod of B.mods) {
+      const partial = partialLockOf(mod);
+      if (!partial || partial.side !== protectedSide || mod.affix === protectedSide) {
+        continue;
+      }
+      if (partialLockCoversAll(onProtected, partial.count)) {
+        locks.push(mod);
+      }
+    }
+    return locks;
+  }
   // Allflame bench: the same currency shows several outcomes and you keep the best.
   const sulphur = isFinite(P(SULPHUR)) ? P(SULPHUR) : NaN;
   const afK = Math.max(1, Math.min(4, opt.allflameK | 0));
@@ -4833,202 +4856,249 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     if (variant === side && allowed('eldritch')) {
       list.push(reforge(`echaos:${side}|${cfg}`, rerollOnlyThisSide('eldritch', CUR.echaos, P(CUR.echaos), billOf(CUR.echaos))));
     }
-    const lock = findMetamod(B, side === 'p' ? 'nchg_suf' : 'nchg_pre');
-    const prefixesNow = sideCount(st, 'p') + jp;
-    const suffixesNow = sideCount(st, 's') + js;
-    const lp = lock ? lockPrice(lock, prefixesNow, suffixesNow) : null;
+    // Each lock that keeps the other side whole: the full lock, or a partial one with room for all of it.
+    const onOtherSide = sideCount(st, other) + (other === 'p' ? jp : js);
+    for (const lock of sideLocks(other, onOtherSide)) {
+      const prefixesNow = sideCount(st, 'p') + jp;
+      const suffixesNow = sideCount(st, 's') + js;
+      const lp = lock ? lockPrice(lock, prefixesNow, suffixesNow) : null;
 
-    // The lock sits on the side being rerolled, so it needs a free slot there.
-    if (lock && allowed('lockchaos') && sideIsNotFull && isFinite(lp.cost)) {
-      list.push(reforge(`lock:${side}:${lp.via}|${cfg}`, rerollBehindLock('lockchaos', `${lockName(lock, lp)} + Chaos Orb`, P(CUR.chaos) + lp.cost, combineBills(lp.bill, billOf(CUR.chaos)))));
-    }
+      // The lock sits on the side being rerolled, so it needs a free slot there.
+      if (lock && allowed('lockchaos') && sideIsNotFull && isFinite(lp.cost)) {
+        list.push(reforge(`lock:${side}:${lock.id}:${lp.via}|${cfg}`, rerollBehindLock('lockchaos', `${lockName(lock, lp)} + Chaos Orb`, P(CUR.chaos) + lp.cost, combineBills(lp.bill, billOf(CUR.chaos)))));
+      }
 
-    const veiledMissing = veiledK >= 0 && keepSt[veiledK] !== 1;
-    const veiledChaosUsable = allowed('vchaos') && isFinite(P(CUR.vchaos));
-    // Lock + Veiled Chaos: the unlocked side rerolls with the veiled mod on it.
-    if (lock && veiledMissing && T[veiledK].side === side && veiledChaosUsable && sideIsNotFull && isFinite(lp.cost)) {
-      list.push(reforge(`lockv:${side}:${lp.via}|${cfg}`, () => {
-        // The veiled mod lands on a random side with room: the locked side too, if it has a free slot.
-        const unveilChance = unveilOdds(B, T[veiledK].m);
-        const rolled = missingRollable(keepSt);
-        const veiledSides = otherSideHasRoom ? [[side, 0.5], [other, 0.5]] : [[side, 1]];
-        const outs = [];
-        for (const [veiledSide, chance] of veiledSides) {
-          const item = itemFor(F, keepSt, keepJ.p, keepJ.s, [{ m: null, t: 0, side: veiledSide, veiled: true }]);
-          const outcomes = rollOutcomes(item, rolled.map(k => T[k]), rerollDist(B, item.mods.length));
-          if (veiledSide === side) {
-            outs.push(...mapRoll(F, keepSt, keepJ.p, keepJ.s, rolled, outcomes, chance * unveilChance, withVeiledHit));
+      const veiledMissing = veiledK >= 0 && keepSt[veiledK] !== 1;
+      const veiledChaosUsable = allowed('vchaos') && isFinite(P(CUR.vchaos));
+      // Lock + Veiled Chaos: the unlocked side rerolls with the veiled mod on it.
+      if (lock && veiledMissing && T[veiledK].side === side && veiledChaosUsable && sideIsNotFull && isFinite(lp.cost)) {
+        list.push(reforge(`lockv:${side}:${lock.id}:${lp.via}|${cfg}`, () => {
+          // The veiled mod lands on a random side with room: the locked side too, if it has a free slot.
+          const unveilChance = unveilOdds(B, T[veiledK].m);
+          const rolled = missingRollable(keepSt);
+          const veiledSides = otherSideHasRoom ? [[side, 0.5], [other, 0.5]] : [[side, 1]];
+          const outs = [];
+          for (const [veiledSide, chance] of veiledSides) {
+            const item = itemFor(F, keepSt, keepJ.p, keepJ.s, [{ m: null, t: 0, side: veiledSide, veiled: true }]);
+            const outcomes = rollOutcomes(item, rolled.map(k => T[k]), rerollDist(B, item.mods.length));
+            if (veiledSide === side) {
+              outs.push(...mapRoll(F, keepSt, keepJ.p, keepJ.s, rolled, outcomes, chance * unveilChance, withVeiledHit));
+            }
+            const missChance = veiledSide === side ? chance * (1 - unveilChance) : chance;
+            outs.push(...mapRoll(F, keepSt, keepJ.p + (veiledSide === 'p'), keepJ.s + (veiledSide === 's'), rolled, outcomes, missChance));
           }
-          const missChance = veiledSide === side ? chance * (1 - unveilChance) : chance;
-          outs.push(...mapRoll(F, keepSt, keepJ.p + (veiledSide === 'p'), keepJ.s + (veiledSide === 's'), rolled, outcomes, missChance));
-        }
-        return { name: `${lockName(lock, lp)} + Veiled Chaos Orb`, family: 'vchaos', cost: P(CUR.vchaos) + lp.cost, outs, bill: combineBills(lp.bill, billOf(CUR.vchaos)) };
-      }));
-    }
-    // Lock + Veiled Chaos with the veiled target on the locked side: the locked side keeps its
-    // mods, and the veiled mod lands on a random side with room, so with a free slot there it
-    // can land among the kept mods (half the time when both sides are open). E.g. two gem
-    // prefixes and a free prefix slot: "Prefixes Cannot Be Changed" + Veiled Chaos.
-    if (lock && veiledMissing && T[veiledK].side === other && veiledChaosUsable && isFinite(lp.cost) && sideIsNotFull && otherSideHasRoom) {
-      list.push(reforge(`lockvo:${side}:${lp.via}|${cfg}`, () => {
-        const unveilChance = unveilOdds(B, T[veiledK].m, modGroupsOn(itemFor(F, keepSt, keepJ.p, keepJ.s)));
-        const rolled = missingRollable(keepSt);
-        const outs = [];
-        // The veiled mod on the locked side (a free slot there), or on the side being rerolled.
-        for (const [veiledSide, chance] of [[other, 0.5], [side, 0.5]]) {
-          const item = itemFor(F, keepSt, keepJ.p, keepJ.s, [{ m: null, t: 0, side: veiledSide, veiled: true }]);
-          const outcomes = rollOutcomes(item, rolled.map(k => T[k]), rerollDist(B, item.mods.length));
-          if (veiledSide === other) {
-            outs.push(...mapRoll(F, keepSt, keepJ.p, keepJ.s, rolled, outcomes, chance * unveilChance, withVeiledHit));
-            outs.push(...mapRoll(F, keepSt, keepJ.p + (other === 'p'), keepJ.s + (other === 's'), rolled, outcomes, chance * (1 - unveilChance)));
-          } else {
-            outs.push(...mapRoll(F, keepSt, keepJ.p + (side === 'p'), keepJ.s + (side === 's'), rolled, outcomes, chance));
+          return { name: `${lockName(lock, lp)} + Veiled Chaos Orb`, family: 'vchaos', cost: P(CUR.vchaos) + lp.cost, outs, bill: combineBills(lp.bill, billOf(CUR.vchaos)) };
+        }));
+      }
+      // Lock + Veiled Chaos with the veiled target on the locked side: the locked side keeps its
+      // mods, and the veiled mod lands on a random side with room, so with a free slot there it
+      // can land among the kept mods (half the time when both sides are open). E.g. two gem
+      // prefixes and a free prefix slot: "Prefixes Cannot Be Changed" + Veiled Chaos.
+      if (lock && veiledMissing && T[veiledK].side === other && veiledChaosUsable && isFinite(lp.cost) && sideIsNotFull && otherSideHasRoom) {
+        list.push(reforge(`lockvo:${side}:${lock.id}:${lp.via}|${cfg}`, () => {
+          const unveilChance = unveilOdds(B, T[veiledK].m, modGroupsOn(itemFor(F, keepSt, keepJ.p, keepJ.s)));
+          const rolled = missingRollable(keepSt);
+          const outs = [];
+          // The veiled mod on the locked side (a free slot there), or on the side being rerolled.
+          for (const [veiledSide, chance] of [[other, 0.5], [side, 0.5]]) {
+            const item = itemFor(F, keepSt, keepJ.p, keepJ.s, [{ m: null, t: 0, side: veiledSide, veiled: true }]);
+            const outcomes = rollOutcomes(item, rolled.map(k => T[k]), rerollDist(B, item.mods.length));
+            if (veiledSide === other) {
+              outs.push(...mapRoll(F, keepSt, keepJ.p, keepJ.s, rolled, outcomes, chance * unveilChance, withVeiledHit));
+              outs.push(...mapRoll(F, keepSt, keepJ.p + (other === 'p'), keepJ.s + (other === 's'), rolled, outcomes, chance * (1 - unveilChance)));
+            } else {
+              outs.push(...mapRoll(F, keepSt, keepJ.p + (side === 'p'), keepJ.s + (side === 's'), rolled, outcomes, chance));
+            }
           }
-        }
-        return {
-          name: `${lockName(lock, lp)} + Veiled Chaos Orb (the veiled mod can land on the locked side)`,
-          family: 'vchaos',
-          lockedSide: other,
-          cost: P(CUR.vchaos) + lp.cost,
-          outs,
-          bill: combineBills(lp.bill, billOf(CUR.vchaos)),
-        };
-      }));
-    }
-    // Harvest reforges respect the lock too: today's "reforge keeping prefixes/suffixes".
-    if (lock && allowed('harvest') && sideIsNotFull && isFinite(lp.cost)) {
-      for (const tag of harvestTags) {
-        const canLand = k => T[k].m.tags.includes(tag) && (T[k].side === side || otherSideHasRoom);
-        if (!missingRollable(keepSt, canLand).length) {
-          continue;
-        }
-        const cost = harvestCost(tag, P) + lp.cost;
-        if (!isFinite(cost)) {
-          continue;
-        }
-        list.push(reforge(`lockharv:${side}:${tag}:${lp.via}|${cfg}`, () => {
-          // (The guaranteed mod and the rest can also land in the locked side's free slots.)
-          const restDist = item => rerollDist(B, item.mods.length);
-          const outs = guaranteedThenRest(F, keepSt, keepJ.p, keepJ.s, { tagOnly: tag }, restDist, { tagMult: tag });
           return {
-            name: `${lockName(lock, lp)} + Harvest reforge with a ${tag} mod (${harvestText(tag)})`,
-            family: 'harvest',
-            cost,
+            name: `${lockName(lock, lp)} + Veiled Chaos Orb (the veiled mod can land on the locked side)`,
+            family: 'vchaos',
+            lockedSide: other,
+            cost: P(CUR.vchaos) + lp.cost,
             outs,
-            bill: combineBills(lp.bill, harvestBill(tag)),
+            bill: combineBills(lp.bill, billOf(CUR.vchaos)),
           };
         }));
+      }
+      // Harvest reforges respect the lock too: today's "reforge keeping prefixes/suffixes".
+      if (lock && allowed('harvest') && sideIsNotFull && isFinite(lp.cost)) {
+        for (const tag of harvestTags) {
+          const canLand = k => T[k].m.tags.includes(tag) && (T[k].side === side || otherSideHasRoom);
+          if (!missingRollable(keepSt, canLand).length) {
+            continue;
+          }
+          const cost = harvestCost(tag, P) + lp.cost;
+          if (!isFinite(cost)) {
+            continue;
+          }
+          list.push(reforge(`lockharv:${side}:${tag}:${lock.id}:${lp.via}|${cfg}`, () => {
+            // (The guaranteed mod and the rest can also land in the locked side's free slots.)
+            const restDist = item => rerollDist(B, item.mods.length);
+            const outs = guaranteedThenRest(F, keepSt, keepJ.p, keepJ.s, { tagOnly: tag }, restDist, { tagMult: tag });
+            return {
+              name: `${lockName(lock, lp)} + Harvest reforge with a ${tag} mod (${harvestText(tag)})`,
+              family: 'harvest',
+              cost,
+              outs,
+              bill: combineBills(lp.bill, harvestBill(tag)),
+            };
+          }));
+        }
       }
     }
   }
 
-  // ---------- 3.30 partial locks ----------
-  // "1/2 Prefix (Suffix) Modifiers cannot be changed" protects that many random mods of its side. To keep the wanted
-  // mods there (all of them, and no more than the lock holds), it is crafted until the random pick covers them:
-  // on average 1 / chance crafts, each wrong one removed at the bench for an Orb of Scouring.
-  const partialLocks = B.mods.filter(mod => partialLockOf(mod));
+  // ---------- 3.30 partial locks, blind ----------
+  // A partial lock with room for its whole side is a cheap full lock (sideLocks). On a side with more mods than it
+  // holds, it protects a random `count` of them, and the game doesn't show which; crafting it again picks again.
+  // So the lock and the orb after it are one gamble: the outcomes are averaged over every pick the lock can make,
+  // each equally likely, and you see what happened once the orb is used. The simulation counts a fractured mod
+  // among the mods the lock can pick; whether the game does is unknown. A partial lock that sits on the side it
+  // protects isn't used here.
+  const partialLocks = B.mods.filter(mod => partialLockOf(mod) && mod.affix !== partialLockOf(mod).side);
 
-  // The wanted mods a partial lock on `side` should protect (the fractured one is safe already), or null.
-  const partialLockKeep = (F, st, side, lock) => {
-    const keep = [];
+  // Every way to choose `choose` of `size` things, as lists of indexes.
+  function combinationsOf(size, choose) {
+    const result = [];
+    const picked = [];
+    function extend(start) {
+      if (picked.length === choose) {
+        result.push(picked.slice());
+        return;
+      }
+      for (let index = start; index < size; index++) {
+        picked.push(index);
+        extend(index + 1);
+        picked.pop();
+      }
+    }
+    extend(0);
+    return result;
+  }
+
+  // The mods on `side` as a partial lock sees them: each target there (wanted, or a wrong tier) by index, then
+  // each junk mod, with the fractured junk mod marked.
+  const sideUnits = (F, st, jp, js, side) => {
+    const units = [];
     for (let k = 0; k < st.length; k++) {
-      if (st[k] === 1 && k !== F && T[k].side === side) {
-        keep.push(k);
+      if (st[k] !== 0 && T[k].side === side) {
+        units.push({ k, junk: false, fractured: k === F });
       }
     }
-    if (!keep.length || keep.length > partialLockOf(lock).count) {
-      return null;
+    const junkCount = (side === 'p' ? jp : js) - targetsOnSide(st, side, 2);
+    const fracturedJunk = side === 'p' ? fjP(F) : fjS(F);
+    for (let index = 0; index < junkCount; index++) {
+      units.push({ k: -1, junk: true, fractured: index < fracturedJunk });
     }
-    return keep;
+    return units;
   };
 
-  // The expected price of a partial lock that covers `keep` among the `onSide` mods of its side, with its bill;
-  // null when it can't. Two ways to get it: the bench (1 / chance crafts), or a Wild Bristle Matron, which gives
-  // one of the metamods that fit an open side at random (prefixCount/suffixCount: mods on each side now), so
-  // fitting / chance Matrons. Each wrong result is removed at the bench for an Orb of Scouring. The cheaper wins.
-  const partialLockPrice = (lock, keep, onSide, prefixCount, suffixCount) => {
-    const chance = partialLockHitChance(onSide, keep.length, partialLockOf(lock).count);
-    if (chance <= 0) {
+  // Every pick a partial lock can make among `units`, or null when it holds them all (sideLocks covers that).
+  const blindPicks = (units, lock) => {
+    const count = partialLockOf(lock).count;
+    if (units.length <= count) {
       return null;
     }
-    const scour = P(CUR.scour);
-    const ways = [];
-    const benchPrice = benchCost(lock, 0, P);
-    if (benchPrice != null && isFinite(benchPrice)) {
-      const crafts = 1 / chance;
-      const removals = crafts - 1;
-      const lockBill = {};
-      for (const [currency, amount] of Object.entries(benchBill(lock, 0))) {
-        lockBill[currency] = amount * crafts;
-      }
-      const via = crafts > 1 ? ` (covers them 1 in ${roundTenth(crafts)}; recraft it, removing a wrong one for an ${CUR.scour})` : '';
-      ways.push({
-        cost: crafts * benchPrice + (removals > 0 ? removals * scour : 0),
-        name: `"${lock.text}"${via}`,
-        bill: combineBills(lockBill, removals > 0 ? billOf(CUR.scour, removals) : null),
-      });
-    }
-    if (opt.matron && isFinite(P(MATRON))) {
-      const fitting = metas.filter(m => (m.affix === 'p' ? prefixCount < max.p : suffixCount < max.s));
-      if (fitting.includes(lock)) {
-        const pulls = fitting.length / chance;
-        const removals = pulls - 1;
-        ways.push({
-          cost: pulls * P(MATRON) + (removals > 0 ? removals * scour : 0),
-          name: `"${lock.text}" via Wild Bristle Matron (1 in ${roundTenth(pulls)} gives it covering them; remove a wrong one at the bench for an ${CUR.scour})`,
-          bill: combineBills(billOf(MATRON, pulls), removals > 0 ? billOf(CUR.scour, removals) : null),
-        });
-      }
-    }
-    const usable = ways.filter(way => isFinite(way.cost));
-    if (!usable.length) {
-      return null;
-    }
-    usable.sort((first, second) => first.cost - second.cost);
-    return usable[0];
+    return combinationsOf(units.length, count);
   };
-  const roundTenth = value => Math.round(value * 10) / 10;
 
-  // The state with only the protected mods (and the fractured one) left.
-  const keptByPartialLock = (F, keep) => {
+  // What a reforge or a Scour leaves when the partial lock on `side` picked `pick`: those mods and the fractured
+  // one. {st, jp, js}.
+  const keptByPick = (F, st, side, units, pick) => {
     const kept = new Array(K).fill(0);
-    for (const k of keep) {
-      kept[k] = 1;
+    const picked = new Set(pick);
+    let keptJunk = 0;
+    for (let index = 0; index < units.length; index++) {
+      const unit = units[index];
+      if (!picked.has(index) && !unit.fractured) {
+        continue;
+      }
+      if (unit.junk) {
+        keptJunk++;
+      } else {
+        kept[unit.k] = st[unit.k];
+      }
     }
     if (F >= 0) {
       kept[F] = 1;
     }
-    return kept;
+    const deadOnSide = targetsOnSide(kept, side, 2);
+    return {
+      st: kept,
+      jp: side === 'p' ? keptJunk + deadOnSide : fjP(F),
+      js: side === 's' ? keptJunk + deadOnSide : fjS(F),
+    };
   };
 
-  // Partial lock + Chaos Orb: everything but the protected mods (and the fractured one) rerolls.
-  function addPartialLockReforges(list, F, st, jp, js) {
+  // The state after an Annul takes `unit` (on `side`).
+  const withoutUnit = (st, jp, js, unit, side) => {
+    if (unit.junk) {
+      return { st, jp: jp - (side === 'p' ? 1 : 0), js: js - (side === 's' ? 1 : 0) };
+    }
+    const after = st.slice();
+    after[unit.k] = 0;
+    const wasDead = st[unit.k] === 2;
+    return { st: after, jp: jp - (wasDead && side === 'p' ? 1 : 0), js: js - (wasDead && side === 's' ? 1 : 0) };
+  };
+
+  // Outcomes with the same state added together.
+  function mergedOutcomes(outs) {
+    const byKey = new Map();
+    for (const outcome of outs) {
+      const known = byKey.get(outcome.key);
+      if (known) {
+        known.p += outcome.p;
+      } else {
+        byKey.set(outcome.key, { ...outcome });
+      }
+    }
+    return [...byKey.values()];
+  }
+
+  const blindLockText = (lock, units, side) =>
+    `protects ${partialLockOf(lock).count} of the ${units.length} ${SIDE_NAME[side]}es at random, unseen`;
+
+  // Blind partial lock + Chaos Orb: the picked mods (and the fractured one) stay, everything else rerolls.
+  function addBlindPartialLockReforges(list, F, st, jp, js) {
     if (!allowed('lockchaos') || !isFinite(P(CUR.chaos))) {
       return;
     }
+    const prefixesNow = sideCount(st, 'p') + jp;
+    const suffixesNow = sideCount(st, 's') + js;
     for (const lock of partialLocks) {
       const side = partialLockOf(lock).side;
-      const keep = partialLockKeep(F, st, side, lock);
-      if (!keep) {
+      const modsWhereTheLockSits = lock.affix === 'p' ? prefixesNow : suffixesNow;
+      if (modsWhereTheLockSits >= max[lock.affix]) {
+        continue; // the lock needs a free slot
+      }
+      const units = sideUnits(F, st, jp, js, side);
+      const picks = blindPicks(units, lock);
+      if (!picks) {
         continue;
       }
-      const onSide = sideCount(st, side) + (side === 'p' ? jp : js);
-      const price = partialLockPrice(lock, keep, onSide, sideCount(st, 'p') + jp, sideCount(st, 's') + js);
-      if (!price) {
+      const lp = lockPrice(lock, prefixesNow, suffixesNow);
+      if (!isFinite(lp.cost)) {
         continue;
       }
-      const keptSt = keptByPartialLock(F, keep);
-      list.push(reforge(`plock:${lock.id}:${keptSt.join('')}:${onSide}|${F}`, () => {
-        const lockOnItem = { m: lock, t: 0, side: lock.affix, crafted: true };
-        const item = itemFor(F, keptSt, fjP(F), fjS(F), [lockOnItem]);
-        const rolled = missingRollable(keptSt);
-        const outcomes = rollOutcomes(item, rolled.map(k => T[k]), rerollDist(B, item.mods.length));
+      list.push(reforge(`pblind:${lock.id}:${lp.via}|${enc(F, st, jp, js)}`, () => {
+        const outs = [];
+        for (const pick of picks) {
+          const kept = keptByPick(F, st, side, units, pick);
+          const lockOnItem = { m: lock, t: 0, side: lock.affix, crafted: true };
+          const item = itemFor(F, kept.st, kept.jp, kept.js, [lockOnItem]);
+          const rolled = missingRollable(kept.st);
+          const outcomes = rollOutcomes(item, rolled.map(k => T[k]), rerollDist(B, item.mods.length));
+          outs.push(...mapRoll(F, kept.st, kept.jp, kept.js, rolled, outcomes, 1 / picks.length));
+        }
         return {
-          name: `${price.name} + ${CUR.chaos}`,
+          name: `${lockName(lock, lp)} (${blindLockText(lock, units, side)}) + ${CUR.chaos}`,
           family: 'lockchaos',
-          cost: price.cost + P(CUR.chaos),
-          outs: mapRoll(F, keptSt, fjP(F), fjS(F), rolled, outcomes),
-          bill: combineBills(price.bill, billOf(CUR.chaos)),
+          // The Allflame bench shows several results of one craft, but they would share the lock's one hidden
+          // pick, so its best-of isn't offered here.
+          hiddenPick: true,
+          cost: lp.cost + P(CUR.chaos),
+          outs: mergedOutcomes(outs),
+          bill: combineBills(lp.bill, billOf(CUR.chaos)),
         };
       }));
     }
@@ -5046,12 +5116,12 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     for (const side of ['p', 's']) {
       addOneSideReforges(list, F, st, jp, js, variant, side);
     }
-    addPartialLockReforges(list, F, st, jp, js);
+    addBlindPartialLockReforges(list, F, st, jp, js);
     const found = list.filter(Boolean);
     // The Allflame bench version of each reforge it can do: see afK outcomes, keep the best.
     if (afOn) {
       for (const r of [...found]) {
-        if (!AF_REF(r.family)) {
+        if (!AF_REF(r.family) || r.hiddenPick) {
           continue;
         }
         found.push(reforge(`af|${r.rkey}`, () => ({
@@ -5405,99 +5475,128 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     // metamod sits on that side too, so it can eat the Annul).
     function addLockAndAnnul() {
       for (const side of ['p', 's']) {
-        const lock = findMetamod(B, side === 's' ? 'nchg_pre' : 'nchg_suf');
-        if (!lock || lock.affix !== side || !hasRoom[side]) {
-          continue;
+        const protectedSide = side === 'p' ? 's' : 'p';
+        const onProtected = protectedSide === 'p' ? prefixCount : suffixCount;
+        for (const lock of sideLocks(protectedSide, onProtected)) {
+          if (lock.affix !== side || !hasRoom[side]) {
+            continue;
+          }
+          const results = removeOne(F, st, jp, js, side);
+          if (!results.length) {
+            continue;
+          }
+          const removable = removableOnSide(F, st, jp, js, side);
+          const outs = results.map(r => outcomeOf(F, r.st, r.jp, r.js, r.p * removable / (removable + 1)));
+          outs.push(outcomeOf(F, st, jp, js, 1 / (removable + 1))); // the Annul took the metamod
+          const lp = lockPrice(lock, prefixCount, suffixCount);
+          out.push({ name: `${lockName(lock, lp)} + ${CUR.annul}`, how: 'lockannul', side, cost: lp.cost + P(CUR.annul), outs, bill: combineBills(lp.bill, billOf(CUR.annul)) });
         }
-        const results = removeOne(F, st, jp, js, side);
-        if (!results.length) {
-          continue;
-        }
-        const removable = removableOnSide(F, st, jp, js, side);
-        const outs = results.map(r => outcomeOf(F, r.st, r.jp, r.js, r.p * removable / (removable + 1)));
-        outs.push(outcomeOf(F, st, jp, js, 1 / (removable + 1))); // the Annul took the metamod
-        const lp = lockPrice(lock, prefixCount, suffixCount);
-        out.push({ name: `${lockName(lock, lp)} + ${CUR.annul}`, how: 'lockannul', side, cost: lp.cost + P(CUR.annul), outs, bill: combineBills(lp.bill, billOf(CUR.annul)) });
       }
     }
 
-    // Partial lock, then Annul or Scour: the protected wanted mods stay, anything else (either side) can go.
-    // The Annul can also take the lock itself.
-    function addPartialLockMoves() {
+    // Blind partial lock, then Annul or Scour (see addBlindPartialLockReforges): the Annul takes a random mod the
+    // lock didn't pick, on either side, or the lock itself; the Scour leaves only the picked mods.
+    function addBlindPartialLockMoves() {
       for (const lock of partialLocks) {
         const side = partialLockOf(lock).side;
-        const keep = partialLockKeep(F, st, side, lock);
-        if (!keep || !hasRoom[lock.affix]) {
+        if (!hasRoom[lock.affix]) {
           continue;
         }
-        const onSide = sideCount(st, side) + (side === 'p' ? jp : js);
-        const price = partialLockPrice(lock, keep, onSide, prefixCount, suffixCount);
-        if (!price) {
+        const units = sideUnits(F, st, jp, js, side);
+        const picks = blindPicks(units, lock);
+        if (!picks) {
           continue;
         }
-        const kept = new Set(keep);
-        // What an Annul can take: an unprotected wanted mod, a wrong tier of a target, or junk.
-        const removals = [];
-        for (let k = 0; k < st.length; k++) {
-          if (st[k] === 1 && k !== F && !kept.has(k)) {
-            const after = st.slice();
-            after[k] = 0;
-            removals.push({ st: after, jp, js });
-          } else if (st[k] === 2) {
-            const after = st.slice();
-            after[k] = 0;
-            removals.push({ st: after, jp: jp - (T[k].side === 'p' ? 1 : 0), js: js - (T[k].side === 's' ? 1 : 0) });
-          }
-        }
-        const junkPrefixes = jp - targetsOnSide(st, 'p', 2) - fjP(F);
-        const junkSuffixes = js - targetsOnSide(st, 's', 2) - fjS(F);
-        for (let i = 0; i < junkPrefixes; i++) {
-          removals.push({ st, jp: jp - 1, js });
-        }
-        for (let i = 0; i < junkSuffixes; i++) {
-          removals.push({ st, jp, js: js - 1 });
-        }
-        if (!removals.length) {
+        const lp = lockPrice(lock, prefixCount, suffixCount);
+        if (!isFinite(lp.cost)) {
           continue;
         }
+        const otherSide = side === 'p' ? 's' : 'p';
+        const otherUnits = sideUnits(F, st, jp, js, otherSide);
+        const lockedText = blindLockText(lock, units, side);
         if (isFinite(P(CUR.annul))) {
-          const share = 1 / (removals.length + 1);
-          const outs = removals.map(r => outcomeOf(F, r.st, r.jp, r.js, share));
-          outs.push(outcomeOf(F, st, jp, js, share)); // the Annul took the lock
-          out.push({ name: `${price.name} + ${CUR.annul}`, how: 'plockannul', side, cost: price.cost + P(CUR.annul), outs, bill: combineBills(price.bill, billOf(CUR.annul)) });
+          addBlindPartialLockAnnul(lock, lp, side, units, otherSide, otherUnits, picks, lockedText);
         }
-        // Scour: only the protected mods (and the fractured one) stay.
         if (isFinite(P(CUR.scour))) {
+          const outs = [];
+          for (const pick of picks) {
+            const kept = keptByPick(F, st, side, units, pick);
+            outs.push(outcomeOf(F, kept.st, kept.jp, kept.js, 1 / picks.length));
+          }
           out.push({
-            name: `${price.name} + ${CUR.scour}`,
+            name: `${lockName(lock, lp)} (${lockedText}) + ${CUR.scour}`,
             how: 'plockscour',
-            cost: price.cost + P(CUR.scour),
-            bill: combineBills(price.bill, billOf(CUR.scour)),
-            outs: [outcomeOf(F, keptByPartialLock(F, keep), fjP(F), fjS(F), 1)],
+            cost: lp.cost + P(CUR.scour),
+            bill: combineBills(lp.bill, billOf(CUR.scour)),
+            outs: mergedOutcomes(outs),
           });
         }
       }
     }
 
+    function addBlindPartialLockAnnul(lock, lp, side, units, otherSide, otherUnits, picks, lockedText) {
+      const outs = [];
+      let lockTaken = 0;
+      for (const pick of picks) {
+        const picked = new Set(pick);
+        const removable = [];
+        for (let index = 0; index < units.length; index++) {
+          if (!picked.has(index) && !units[index].fractured) {
+            removable.push({ unit: units[index], side });
+          }
+        }
+        for (const unit of otherUnits) {
+          if (!unit.fractured) {
+            removable.push({ unit, side: otherSide });
+          }
+        }
+        const share = 1 / picks.length / (removable.length + 1);
+        for (const choice of removable) {
+          const after = withoutUnit(st, jp, js, choice.unit, choice.side);
+          outs.push(outcomeOf(F, after.st, after.jp, after.js, share));
+        }
+        lockTaken += share;
+      }
+      if (!outs.length) {
+        return;
+      }
+      const merged = mergedOutcomes(outs);
+      merged.push(outcomeOf(F, st, jp, js, lockTaken)); // the Annul took the lock
+      out.push({
+        name: `${lockName(lock, lp)} (${lockedText}) + ${CUR.annul}`,
+        how: 'plockannul',
+        side,
+        cost: lp.cost + P(CUR.annul),
+        outs: merged,
+        bill: combineBills(lp.bill, billOf(CUR.annul)),
+      });
+    }
+
     // Lock the other side, then Scour: this side is wiped.
     function addLockAndScour() {
       for (const side of ['p', 's']) {
-        const lock = findMetamod(B, side === 'p' ? 'nchg_suf' : 'nchg_pre');
+        const protectedSide = side === 'p' ? 's' : 'p';
+        const onProtected = protectedSide === 'p' ? prefixCount : suffixCount;
         const onSide = removableOnSide(F, st, jp, js, side);
-        if (!lock || !hasRoom[side] || !onSide) {
+        if (!hasRoom[side] || !onSide) {
           continue;
         }
-        const after = st.map((x, k) => (T[k].side === side && k !== F ? 0 : x));
-        const jpAfter = side === 'p' ? fjP(F) : jp;
-        const jsAfter = side === 's' ? fjS(F) : js;
-        const lp = lockPrice(lock, prefixCount, suffixCount);
-        out.push({
-          name: `${lockName(lock, lp)} + ${CUR.scour}`,
-          how: 'scour',
-          cost: lp.cost + P(CUR.scour),
-          bill: combineBills(lp.bill, billOf(CUR.scour)),
-          outs: [outcomeOf(F, after, jpAfter, jsAfter, 1)],
-        });
+        for (const lock of sideLocks(protectedSide, onProtected)) {
+          if (lock.affix !== side) {
+            continue;
+          }
+          const after = st.map((x, k) => (T[k].side === side && k !== F ? 0 : x));
+          const jpAfter = side === 'p' ? fjP(F) : jp;
+          const jsAfter = side === 's' ? fjS(F) : js;
+          const lp = lockPrice(lock, prefixCount, suffixCount);
+          out.push({
+            name: `${lockName(lock, lp)} + ${CUR.scour}`,
+            how: 'scour',
+            cost: lp.cost + P(CUR.scour),
+            bill: combineBills(lp.bill, billOf(CUR.scour)),
+            outs: [outcomeOf(F, after, jpAfter, jsAfter, 1)],
+          });
+        }
       }
     }
 
@@ -5666,8 +5765,11 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
           }
         }
         for (const keepSide of ['p', 's']) {
-          for (const fill of fills) {
-            addOneLockedHarvestAdd(tag, colour, amount, keepSide, fill);
+          const onKeepSide = keepSide === 'p' ? prefixCount : suffixCount;
+          for (const lock of sideLocks(keepSide, onKeepSide)) {
+            for (const fill of fills) {
+              addOneLockedHarvestAdd(lock, tag, colour, amount, keepSide, fill);
+            }
           }
         }
       }
@@ -5688,10 +5790,18 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
       return Math.max(0, removable);
     }
 
-    function addOneLockedHarvestAdd(tag, colour, amount, keepSide, fill) {
-      const lock = findMetamod(B, keepSide === 'p' ? 'nchg_pre' : 'nchg_suf');
-      if (!lock || lock.affix === keepSide) {
+    function addOneLockedHarvestAdd(lock, tag, colour, amount, keepSide, fill) {
+      if (lock.affix === keepSide) {
         return;
+      }
+      // A partial lock protects only the mods there when it was crafted, so a new mod landing on the kept side
+      // could be the one removed. Only when that side is full (the new mod must go to the open side) does it
+      // work like the full lock.
+      if (partialLockOf(lock)) {
+        const keepSideIsFull = (keepSide === 'p' ? prefixCount : suffixCount) >= max[keepSide];
+        if (fill.kind !== 'lock' || !keepSideIsFull) {
+          return;
+        }
       }
       const openSide = lock.affix; // the metamod sits on the side that can change
       const multimod = findMetamod(B, 'mul_mods');
@@ -5869,7 +5979,7 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     addLockAndAnnul();
     addBlockedTypeAnnul();
     addLockAndScour();
-    addPartialLockMoves();
+    addBlindPartialLockMoves();
     // With a junk mod fractured, starting a new base is always an option.
     if (F === -3 || F === -4) {
       out.push({ name: 'Start a new base', how: 'restart', cost: 0, bill: {}, outs: [{ key: 'ruined', F: -2, st, jp, js, p: 1 }] });
@@ -7543,10 +7653,10 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
       }
       case 'plockannul': {
         const lockTakesIt = m.outs[m.outs.length - 1].p;
-        return `${m.name}: the protected mods stay, anything else on either side can go (the metamod itself 1 time in ${fmtN(1 / lockTakesIt)}); ${pctText(pGood)} it removes a mod you don't need. Remove the metamod after.`;
+        return `${m.name}: the Annul takes a mod the lock didn't pick, on either side, or the lock itself (1 time in ${fmtN(1 / lockTakesIt)}); you can't see the pick, so this counts every one; ${pctText(pGood)} it removes a mod you don't need. Remove the metamod after.`;
       }
       case 'plockscour':
-        return `${m.name}: everything but the protected mods is wiped, on both sides.`;
+        return `${m.name}: only the mods the lock picked (and a fractured one) stay; you see which once the Scour is used.`;
       case 'lockannul': {
         const metamodTakesIt = m.outs[m.outs.length - 1].p;
         return `${m.name}: only ${SIDE_NAME[m.side]}es can go (the metamod itself 1 time in ${fmtN(1 / metamodTakesIt)}); ${pctText(pGood)} it removes a mod you don't need. Remove the metamod after.`;

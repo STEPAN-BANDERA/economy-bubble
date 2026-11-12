@@ -6,7 +6,8 @@ an effect the build generator can reason with:
 kind       what the line does: increased, more, added, flat, level, conversion, extra, penetration, exposure,
            resistance, chance, grants, trigger, limit, flag, minor
 stat       what it changes (damage, castSpeed, critChance, life, block, ...); "minor" lines are understood but
-           don't matter for a build's power (light radius, item rarity, stun on enemies, ...)
+           don't matter for a build's power (light radius, stun on enemies, ...). Item rarity and quantity are read
+           (itemRarity, itemQuantity) for the build planner's rarity stage; they aren't part of the power score
 tags       the scope: which damage types, skill kinds and weapons the line applies to. An effect only helps a
            build whose own tags include them all.
 subject    who gets it: self, minion, totem, enemy (an enemy debuff), supported (a support gem's skill)
@@ -308,7 +309,9 @@ TAG_PHRASES = [
     ("ignite", ["ignite"]),
     ("poisons", ["poison"]),
     ("bleeds", ["bleed"]),
-    ("burning", ["ignite"]),
+    # Burning damage is fire damage over time: ignite and burning skills (Righteous Fire, burning ground) alike.
+    # It was read as ignite only, which left burning skills without it (found by scripts/check_against_pob.py).
+    ("burning", ["fire", "dot"]),
     ("bleeding", ["bleed"]),
     ("bleed", ["bleed"]),
     ("poison", ["poison"]),
@@ -364,6 +367,14 @@ WEAPON_REQUIREMENTS = [
 CONDITION_PHRASES = [
     ("masteries allocated", "masteryCount"),
     ("cannot have life leeched", "unleechable"),
+    # "per Raised Zombie", "per Summoned Skeleton": how many of your own minions of a kind you have, which the
+    # generator doesn't plan beside a main skill; they read as 3 stacks (Umbral Army gave every attack build 45%).
+    ("per summoned", "perOwnMinion"),
+    ("per minion", "perOwnMinion"),
+    ("per raised", "perOwnMinion"),
+    # Endurance Charges are counted by the engine (the build's maximum, when it has a source), not assumed.
+    ("per endurance charge", "perEnduranceCharge"),
+    ("for each endurance charge", "perEnduranceCharge"),
     ("for each", "perStack"),
     (" per ", "perStack"),
     ("guard skill", "guard"),
@@ -610,6 +621,15 @@ def split_condition(text):
         requires = ["dualWield"]
         text = re.sub(r"\s+while dual wielding$", "", text, flags=re.IGNORECASE)
         lowered = text.lower()
+    # "while affected by Hatred" holds exactly when the build runs that aura (or herald): the engine checks the build's
+    # auras. "while affected by a Guard Skill" names no skill and goes through the phrase table below.
+    affected = re.search(r"\s+while affected by (?!a |an |any |your )([A-Z][\w']*(?: (?:of )?[A-Z][\w']*)*)$", text)
+    if affected:
+        return text[:affected.start()], requires, "affectedBy:" + affected.group(1)
+    # "+15% Chance to Block Attack Damage from Cursed Enemies": a defence against some enemies only.
+    from_enemies = re.search(r"\s+from (\w+) Enemies$", text, flags=re.IGNORECASE)
+    if from_enemies:
+        return text[:from_enemies.start()], requires, condition_of_clause(from_enemies.group(1))
     clause = re.search(r"\s+(while|if|when|during|against|on|for each|per|after|to enemies that|for \d+ seconds)\b(.*)$",
                        text, flags=re.IGNORECASE)
     if clause is None:
@@ -881,6 +901,16 @@ def condition_of_clause(clause):
 def read_special_shapes(line, subject, range_mode):
     """Sentence shapes that aren't "number + stat": damage reduction, recoup, "All Damage can Ignite", effects of
     named buffs and ailments."""
+    # "Every 4 seconds, Regenerate 10% of Life over one second": a burst, which over a fight averages its percent
+    # divided by the period (2.5% a second). It was read as 10% a second.
+    match = re.match(r"^Every (" + VALUE + r") seconds?, Regenerate (" + VALUE + r")% of (Life|Energy Shield|Mana) over one second$", line, flags=re.IGNORECASE)
+    if match:
+        average = read_value(match.group(2), range_mode) / max(1.0, read_value(match.group(1), range_mode))
+        stats = {"life": "lifeRegen", "energy shield": "esRegen", "mana": "minor"}
+        stat = stats[match.group(3).lower()]
+        if stat == "minor":
+            return effect("minor", "minor", [], None, subject, None, [])
+        return effect("flat", stat, [], average, subject, None, [])
     # Flask charge generation ("Flasks gain 3 Charges every 3 seconds") keeps utility flasks up: charges a second.
     match = re.match(r"^Flasks gain (" + VALUE + r") Charges? every (" + VALUE + r") seconds?$", line, flags=re.IGNORECASE)
     if match:
@@ -903,15 +933,29 @@ def read_special_shapes(line, subject, range_mode):
     match = re.match(r"^All Damage (?:from Hits |with Hits )?can (Ignite|Shock|Chill|Freeze|Poison)$", line, flags=re.IGNORECASE)
     if match:
         return effect("flag", "allDamageCan" + match.group(1).capitalize(), [], None, subject, None, [])
-    match = re.match(r"^(" + VALUE + r")% (increased|reduced) (?:Effect of (?:your )?(.+?)|(.+?) Effect)(?: on you)?(?: per (.+))?$",
+    # "Anger has 20% increased Aura Effect": that one aura's effect (the engine scales its lines).
+    match = re.match(r"^([A-Z][\w']*(?: (?:of )?[A-Z][\w']*)*) has (" + VALUE + r")% (increased|reduced) Aura Effect$", line)
+    if match:
+        value = read_value(match.group(2), range_mode)
+        if match.group(3) == "reduced":
+            value = -value
+        found = effect("increased", "effect:aura", [], value, subject, None, [])
+        found["skill"] = match.group(1)
+        return found
+    match = re.match(r"^(" + VALUE + r")% (increased|reduced) (?:Effect of (?:your )?(.+?)|(.+?) Effect)( on you)?(?: per (.+))?$",
                      line, flags=re.IGNORECASE)
     if match:
         what = match.group(3) or match.group(4)
         value = read_value(match.group(1), range_mode)
         if match.group(2).lower() == "reduced":
             value = -value
-        condition = "perStack" if match.group(5) else None
-        return effect("increased", "effect:" + camel_case(what), [], value, subject, condition, [])
+        condition = "perStack" if match.group(6) else None
+        stat = "effect:" + camel_case(what)
+        # What enemies put on you ("Effect of Curses on you", "Ailments on you") is a defence of its own, not the
+        # effect of your own curses: both were read as effect:curses (found 2026-11-12).
+        if match.group(5) and re.search(r"curse|ailment|chill|shock|freeze|ignite|poison|bleed|hex|mark", what, flags=re.IGNORECASE):
+            stat += "OnYou"
+        return effect("increased", stat, [], value, subject, condition, [])
     match = re.match(r"^\+?(" + VALUE + r")% to (.*?)Damage over Time Multiplier(.*)$", line, flags=re.IGNORECASE)
     if match:
         tags, leftover = phrase_tags(match.group(2) + " " + match.group(3))
@@ -947,9 +991,14 @@ def read_special_shapes(line, subject, range_mode):
     match = re.match(r"^(" + VALUE + r")% increased Global Defences$", line, flags=re.IGNORECASE)
     if match:
         return effect("increased", "defences", [], read_value(match.group(1), range_mode), subject, None, [])
-    match = re.match(r"^(?:Gain )?(" + VALUE + r")% of Maximum Life (?:as Extra Maximum Energy Shield|Converted to Energy Shield)$", line, flags=re.IGNORECASE)
+    # "as Extra Maximum Energy Shield" adds energy shield and keeps the life; "Converted to Energy Shield" moves that
+    # share of life into energy shield (Ghostwrithe). Both read as the first, so conversion doubled half the pool.
+    match = re.match(r"^(?:Gain )?(" + VALUE + r")% of Maximum Life as Extra Maximum Energy Shield$", line, flags=re.IGNORECASE)
     if match:
         return effect("flat", "lifeToEnergyShield", [], read_value(match.group(1), range_mode), subject, None, [])
+    match = re.match(r"^(" + VALUE + r")% of Maximum Life Converted to Energy Shield$", line, flags=re.IGNORECASE)
+    if match:
+        return effect("flat", "lifeConvertedToEnergyShield", [], read_value(match.group(1), range_mode), subject, None, [])
     match = re.match(r"^(.*?)(?:Attacks |Skills )?fire (" + VALUE + r") additional (?:Arrows|Projectiles)$", line, flags=re.IGNORECASE)
     if match:
         tags, leftover = phrase_tags(match.group(1))
@@ -974,6 +1023,49 @@ def read_special_shapes(line, subject, range_mode):
     if match:
         return effect("flat", "armourAppliesMore", [], read_value(match.group(1), range_mode), subject, None, [])
     return None
+
+
+# A unique flask's lines hold while it is up: "10% increased Attack Speed during Effect". The "increased ... Effect"
+# shape used to swallow them into a made-up stat (effect:attackSpeedDuring) the engine never used. The line without
+# its last words is read as usual, under the flask condition unless it has a condition of its own ("against Enemies
+# on Consecrated Ground during Effect"). Found by scripts/check_against_pob.py.
+DURING_FLASK_PATTERN = re.compile(r"^(.+?) during (?:any )?(?:Flask )?Effect$", re.IGNORECASE)
+
+
+def read_during_flask_effect(line, range_mode):
+    match = DURING_FLASK_PATTERN.match(line.strip())
+    if match is None:
+        return None
+    inner = read_line(match.group(1), range_mode)
+    if not inner.get("understood") or inner.get("kind") in ("unknown", "minor"):
+        return None
+    if not inner.get("condition"):
+        inner["condition"] = "flask"
+    return inner
+
+
+def with_trailing_condition(special, line, subject, range_mode):
+    """A special shape matches the start of a line and ignored any condition after it: "+10% to Damage over Time
+    Multiplier if you've Killed Recently" was read as always on. When the line without its trailing condition clause
+    still reads as the same stat and value, that clause is the effect's condition (and the cleaner reading, without
+    the clause's words, is kept). When it doesn't ("Grants 10 Life per Enemy Hit": the "per" belongs to the stat),
+    the shape is left as it was."""
+    if special.get("condition") or special.get("requires"):
+        return special
+    core, requires, condition = split_condition(line)
+    if condition is None and not requires:
+        return special
+    # "on you" says who has it ("Effect of Herald Buffs on you"), not when it holds.
+    if line[len(core):].strip().lower() in ("on you", "to you"):
+        return special
+    core_special = read_special_shapes(core.strip(), subject, range_mode)
+    if core_special is None:
+        return special
+    if core_special.get("stat") != special.get("stat") or core_special.get("value") != special.get("value"):
+        return special
+    core_special["condition"] = condition
+    core_special["requires"] = requires
+    return core_special
 
 
 def effect_understood(found):
@@ -1001,26 +1093,53 @@ def read_scope_first(core, subject, condition, requires, range_mode):
     return found
 
 
+# The statements' patterns, compiled once: there are more of them than Python's regex cache holds (512), so
+# re.search() with the raw pattern compiled every one again for every line, about 90 ms a line.
+COMPILED_STATEMENTS = [(re.compile(pattern, flags=re.IGNORECASE), templates) for pattern, templates in STATEMENTS]
+
+
 def read_statement(line, range_mode):
     """A line from the hand-written table in mechanics_statements.py, as a list of effects; None when no entry
     matches."""
-    for pattern, templates in STATEMENTS:
-        match = re.search(pattern, line, flags=re.IGNORECASE)
+    for pattern, templates in COMPILED_STATEMENTS:
+        match = pattern.search(line)
         if match is None:
             continue
+        # A pattern that matches only the start of the line ignored a condition after it ("Prevent +15% of Suppressed
+        # Spell Damage while on Full Energy Shield"): such a clause becomes the condition of effects that have none.
+        trailing_condition = trailing_clause_condition(line[match.end():])
         effects = []
         for template in templates:
             found = dict(template)
             found["tags"] = list(template.get("tags", []))
             if found.get("value") == "#":
                 found["value"] = read_value(match.group(1), range_mode)
+            elif isinstance(found.get("value"), str) and found["value"].endswith("#"):
+                # "-#" is the number negated ("12% less damage taken" is -12% more), "4*#" four times it (per stage).
+                factor_text = found["value"][:-1]
+                factor = -1.0 if factor_text == "-" else float(factor_text.rstrip("*"))
+                found["value"] = factor * read_value(match.group(1), range_mode)
             if found.get("stat") == "#name":
                 found["stat"] = match.group(1)
             found.setdefault("requires", [])
+            if trailing_condition and not found.get("condition") and found.get("kind") != "minor":
+                found["condition"] = trailing_condition
             found["understood"] = True
             effects.append(found)
         return effects
     return None
+
+
+TRAILING_CLAUSE_PATTERN = re.compile(r"^\s+(while|if|when|during|against|for each|per)\b", re.IGNORECASE)
+
+
+def trailing_clause_condition(tail):
+    """The condition of what is left of a line after a statement's pattern, when it starts like a condition clause;
+    None otherwise."""
+    if not tail or TRAILING_CLAUSE_PATTERN.match(tail) is None:
+        return None
+    _, _, condition = split_condition(tail)
+    return condition
 
 
 # Auras, heralds, banners and curses describe their effect from the outside ("You and nearby allies gain ...",
@@ -1046,15 +1165,16 @@ BUFF_LINE_REWRITES = [
 ]
 
 
-# 3.30 rewords "nearby" as an exact range ("Inflict Barnacles on Enemies within 5 metres"; patchnotes.txt, 3.30.0
+# 3.30 rewords "nearby" as an exact range ("Inflict Barnacles on Enemies within 5 metres"; GGG's patch notes, 3.30.0
 # General Changes): only the description changed, not the range. The range doesn't matter to a build's power, so
 # these phrasings are folded back into the "nearby" wording the rest of the vocabulary reads.
 METRE_RANGE = r"within " + VALUE + r" metres?"
 NEARBY_REWRITES = [
     (r"^[Yy]ou and (?:your )?[Aa]llies " + METRE_RANGE + r" (?:of you )?", "You and nearby allies "),
     (r"^Enemies " + METRE_RANGE + r" (?:of you )?", "Nearby Enemies "),
-    (r"[Aa]llies " + METRE_RANGE + r"", "nearby Allies"),
-    (r"[Ee]nemies " + METRE_RANGE + r"", "nearby Enemies"),
+    # These two had backspace characters where \b was meant, so they never matched (fixed 2026-11-12).
+    (r"\b[Aa]llies " + METRE_RANGE + r"\b", "nearby Allies"),
+    (r"\b[Ee]nemies " + METRE_RANGE + r"\b", "nearby Enemies"),
 ]
 
 
@@ -1103,6 +1223,24 @@ def read_enemy_damage_dealt(remainder, range_mode):
     return found
 
 
+# Item rarity and quantity don't change a build's power, but the build planner's rarity stage weighs them. Only the
+# plain "increased Rarity of Items found" shape is read: a line about items "dropped by" some enemies has a scope
+# (shattered, killed with a crit, ...) and stays minor rather than being read as global.
+ITEM_FIND_PATTERN = re.compile(r"^(" + VALUE + r")% (increased|reduced) (rarity|quantity) of items found$")
+ITEM_FIND_STATS = {"rarity": "itemRarity", "quantity": "itemQuantity"}
+
+
+def read_item_find(line, range_mode):
+    match = ITEM_FIND_PATTERN.match(line.strip().lower())
+    if match is None:
+        return None
+    value = read_value(match.group(1), range_mode)
+    if match.group(2) == "reduced":
+        value = -value
+    found = effect("increased", ITEM_FIND_STATS[match.group(3)], [], value, "self", None, [])
+    return effect_understood(found)
+
+
 def read_line_effects(line, range_mode="roll"):
     """All the effects of one stat line: usually one, several for some hand-written statements."""
     line = nearby_wording(line)
@@ -1121,6 +1259,9 @@ def read_line(line, range_mode="roll"):
     leading = read_leading_clause(line, range_mode)
     if leading is not None:
         return leading
+    item_find = read_item_find(line, range_mode)
+    if item_find is not None:
+        return item_find
     line, from_curse = own_wording_of_buff_line(line)
     if line is None or is_minor(line):
         return effect_understood(effect("minor", "minor", [], None, "self", None, []))
@@ -1134,8 +1275,13 @@ def read_line(line, range_mode="roll"):
             found["kind"] = "resistance"
         return found
 
+    during_flask = read_during_flask_effect(line, range_mode)
+    if during_flask is not None:
+        return during_flask
+
     special = read_special_shapes(remainder, subject, range_mode)
     if special is not None:
+        special = with_trailing_condition(special, remainder, subject, range_mode)
         special["understood"] = True
         return special
 
