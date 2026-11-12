@@ -24,6 +24,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+from text_files import read_utf8, use_utf8_console, write_utf8
+
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / ".cache" / "coe"
 OUT = ROOT / "public" / "data" / "craft"
@@ -64,7 +66,7 @@ def fetch(key):
         req = urllib.request.Request(SITE + FILES[key], headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=120) as r:
             path.write_bytes(r.read())
-    text = path.read_text(encoding="utf-8")
+    text = read_utf8(path)
     return json.loads(text[text.index("=") + 1:].rstrip().rstrip(";"))
 
 
@@ -137,6 +139,8 @@ def main():
     groups = {g["id_bgroup"]: g for g in d["bgroups"]["seq"] if g["id_bgroup"] in GROUPS}
     bases = {b["id_base"]: b for b in d["bases"]["seq"] if b["id_bgroup"] in groups}
     bench = common.get("benchcosts", {})
+    # Craft of Exile lists its leagues newest first; the first is the one its data describes.
+    data_league = (common.get("leagues") or [{}])[0].get("name")
 
     # Essence per (base, mod): the base-specific essence modifier id -> essence.
     ess_names = {e["id_essence"]: e["name_essence"] for e in d["essences"]["seq"]}
@@ -191,7 +195,7 @@ def main():
             ])
         if not rows:
             continue
-        (OUT / f"base-{bid}.json").write_text(json.dumps({"id": int(bid), "mods": rows}, separators=(",", ":")))
+        write_utf8(OUT / f"base-{bid}.json", json.dumps({"id": int(bid), "mods": rows}, separators=(",", ":")))
         g = b["id_bgroup"]
         base_out[bid] = {
             "name": b["name_base"], "group": int(g),
@@ -249,6 +253,8 @@ def main():
     index = {
         "source": "Craft of Exile (craftofexile.com) data files; unminable weights by the Prohibited Library community",
         "built": time.strftime("%Y-%m-%d"),
+        # The newest league Craft of Exile's data covers; public/craft.js picks patch rules by it (gameRulesOf).
+        "dataLeague": data_league,
         "groups": {g: {"name": v["name_bgroup"], "maxAffix": int(v["max_affix"])} for g, v in groups.items()},
         "bases": base_out,
         "bitems": dict(sorted(bitems.items())),
@@ -262,11 +268,12 @@ def main():
         "influences": INFLUENCES,
         "fallbackPrices": fallback,
     }
-    (OUT / "index-poe1.json").write_text(json.dumps(index, separators=(",", ":")))
+    write_utf8(OUT / "index-poe1.json", json.dumps(index, separators=(",", ":")))
     size = sum(p.stat().st_size for p in OUT.glob("*.json"))
     print(f"craft data: {len(base_out)} bases, {len(bitems)} base items, {len(fossils)} fossils, "
           f"{size / 1e6:.1f} MB in {OUT.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
+    use_utf8_console()
     main()

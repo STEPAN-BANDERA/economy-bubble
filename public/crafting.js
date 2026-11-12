@@ -1684,6 +1684,13 @@ function fossilLabView(lab) {
       el('td', { class: 'l' }, hit(b.whole, 'R', money)),
       el('td', { class: 'l' }, hit(b.perHit, 'perHit', v => `${money(v)} (${C.pctText(b.perHit.pAll)} a try)`)),
       el('td', { class: 'l' }, hit(b.clicks, 'clicksPerHit', v => `${C.fmtN(v)} clicks`))))));
+  // The cheapest combinations to land one side's wanted mods together (only when the other side has wanted mods too).
+  const sideTable = !lab.bySide?.length ? null : el('table', { class: 'cmp' },
+    el('thead', {}, el('tr', {}, ['Side', 'Cheapest to land that side\'s mods at once'].map((h, i) => el('th', { scope: 'col', class: i ? 'l' : '' }, h)))),
+    el('tbody', {}, lab.bySide.map(entry => el('tr', {},
+      el('td', { class: 'l' }, entry.side === 'p' ? 'Prefixes' : 'Suffixes', el('br'), el('small', { class: 'muted' }, entry.targets.join(', '))),
+      el('td', { class: 'l' }, entry.rows.length ? entry.rows.map((r, i) => [i ? el('br') : null, fos(r), ' ',
+        el('b', {}, money(r.perHitBySide[entry.side])), el('small', { class: 'muted' }, ` (${C.pctText(r.pBySide[entry.side])} a try, about ${C.fmtN(1 / r.pBySide[entry.side])} tries)`)]) : el('span', { class: 'muted' }, '–'))))));
   const sorts = { R: 'Whole craft', perHit: 'Cost per full hit', clicksPerHit: 'Clicks per full hit' };
   let by = 'R';
   const tbody = el('tbody');
@@ -1704,6 +1711,7 @@ function fossilLabView(lab) {
     el('summary', {}, 'Fossil lab', el('small', { class: 'muted' }, ` — ${lab.tried} combinations of up to four fossils, the best of each size`)),
     el('p', { class: 'muted small' }, 'Like Craft of Exile\'s fossil calculator, plus what only today\'s prices can tell: "Whole craft" opens with that combination and then follows the cheapest strategy (slams, annuls, bench, other reforges) at this hour\'s prices. "Land all at once" is rolling until every wanted mod shows up in one reforge (the classic fossil calculator number), in chaos and in clicks (each fossil socketed and the resonator applied count as clicks', lab.ruthless ? ', and the Scour before each' : '', ').'),
     el('div', { class: 'scroll' }, bestTable),
+    sideTable ? el('div', { class: 'scroll' }, sideTable) : null,
     el('div', { class: 'segs', role: 'group', 'aria-label': 'Sort the combinations by' }, el('span', { class: 'muted small' }, 'All combinations, by: '), btns),
     el('div', { class: 'scroll' }, el('table', { class: 'cmp' },
       el('thead', {}, el('tr', {}, ['Fossils', 'Per try', ...lab.targets, 'All at once', 'Cost per full hit', 'Clicks per full hit', 'Whole craft'].map((h, i) => el('th', { scope: 'col', class: i === 0 ? 'l' : '', title: i >= 2 && i < 2 + lab.targets.length ? `Chance one reforge rolls ${h}` : null }, i >= 2 && i < 2 + lab.targets.length ? (h.length > 22 ? h.slice(0, 20) + '…' : h) : h)))),
@@ -1889,7 +1897,7 @@ function optionsView(spec) {
     el('span', { class: 'muted small' }, 'Methods the planner may use:'),
     el('div', { class: 'switches' },
       sw('hinekora', "Hinekora's Lock", R() ? 'The Hinekora\'s Lock currency: one look at what the next currency will do on a rare. Off by default here: Ruthless sees a handful a league (and no beast recipe for magic items)' : 'One look at what the next currency will do; apply it only if good (a bad look spends the Lock). Magic items: the Craicic Croaker + Black Mórrigan recipe; rare items: the Hinekora\'s Lock currency, hundreds of divines', C.HK_LOCK),
-      R() ? null : sw('matron', 'Wild Bristle Matron', 'Metamods from the Matron: a random one that fits an open side (1 prefix metamod, 4 suffix ones); a wrong one costs an Orb of Scouring to remove. Cheap when only the one you want fits', C.MATRON),
+      R() ? null : sw('matron', 'Wild Bristle Matron', 'Metamods from the Matron: a random one of the bench metamods that fits an open side; a wrong one costs an Orb of Scouring to remove. Cheap when only the one you want fits', C.MATRON),
       R() ? null : sw('rancour', 'Crystallised Rancour', 'Harvest reforges with a minion, elemental, attribute, mana or drop mod, and fire/cold/lightning damage swaps (Mirage league)', C.RANCOUR),
       R() ? null : sw('beasts', 'Farric beasts', 'Farric Wolf / Lynx Alpha (move a mod to the other side) and Craicic Chimeral imprints. Beasts aren\'t on the Currency Exchange: they\'re caught or bought one at a time, so plans that need hundreds are hard to supply', C.CUR.wolf),
       sw('topEssence', 'Highest-tier essences only', 'Only the top essence level (Deafening; Shrieking for the few that stop there): it rolls the best tier, on some mods above what the mod can roll normally. Off: the planner may pick the level below when it\'s cheaper and still meets your tier', 'Deafening Essence of Greed'),

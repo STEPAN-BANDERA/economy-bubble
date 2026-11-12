@@ -20,6 +20,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+from text_files import read_utf8, use_utf8_console, write_utf8
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FARMING_FILE = REPO_ROOT / "public" / "farming.js"
 OUTPUT_DIR = REPO_ROOT / "public" / "data" / "ninja-history"
@@ -40,7 +42,7 @@ PLAIN_PRICE_SUSPECT_RATIO = 10
 
 def card_items_priced_by_ninja():
     """{item name: poe.ninja type} for every card line with a `ninja:` type in farming.js."""
-    source = FARMING_FILE.read_text(encoding="utf8")
+    source = read_utf8(FARMING_FILE)
     pattern = r"\{ (?:name|item): '((?:[^'\\]|\\.)*)', ninja: '(\w+)'"
     items = {}
     for match in re.finditer(pattern, source):
@@ -152,7 +154,7 @@ def main():
     }
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / f"{league.lower()}.json"
-    out_path.write_text(json.dumps(output, ensure_ascii=False, separators=(",", ":")), encoding="utf8")
+    write_utf8(out_path, json.dumps(output, ensure_ascii=False, separators=(",", ":")))
 
     missing = sorted(set(wanted) - found)
     print(f"{out_path.relative_to(REPO_ROOT)}: {len(days)} days, {len(found)} of {len(wanted)} items, {out_path.stat().st_size // 1024} KB")
@@ -161,4 +163,5 @@ def main():
 
 
 if __name__ == "__main__":
+    use_utf8_console()
     main()

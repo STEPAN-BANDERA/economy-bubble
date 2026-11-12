@@ -17,7 +17,7 @@
 // records the data's build date, and a rebuilt data set is reported (costs can move with it).
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
@@ -25,7 +25,10 @@ const fixtureDir = path.join(here, 'craft-regression');
 const baselinePath = path.join(fixtureDir, 'baseline.json');
 const TOLERANCE = 0.005; // 0.5%
 
-const { prepareBase, forBaseItem, plan } = await import(path.join(root, 'public', 'craft.js'));
+// import() takes a URL, not a path: a bare Linux path happens to work, but a Windows one ("c:\...")
+// reads as a URL with the scheme "c:" and fails, so the path is turned into a file:// URL first.
+const craftEngineUrl = pathToFileURL(path.join(root, 'public', 'craft.js')).href;
+const { prepareBase, forBaseItem, plan, newItem, apply, gameRulesOf, partialLockOf, partialLockHitChance } = await import(craftEngineUrl);
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -178,6 +181,57 @@ for (const item of items) {
     }
   } else {
     console.log('  ok: every plan within 0.5% of the baseline');
+  }
+}
+
+// Patch rules (README "Patch rules"), checked on the second wand with 3.30's metamods added by hand, since the data
+// may not have them yet. Each check: [what, passed, details].
+function patchRuleChecks() {
+  const checks = [];
+  const covens = { ...index, dataLeague: 'Covens' };
+  checks.push(['data without a league keeps the 3.29 Annul rule', gameRulesOf(index).annulRespectsTypeBlock || Boolean(index.dataLeague), '']);
+  checks.push(['a league after Allflame drops it', !gameRulesOf(covens).annulRespectsTypeBlock, '']);
+  checks.push(['partial lock odds: 2 of 3 prefixes with a 2-lock is 1 in 3', Math.abs(partialLockHitChance(3, 2, 2) - 1 / 3) < 1e-9, '']);
+  checks.push(['partial lock odds: 1 of 3 with a 2-lock is 2 in 3', Math.abs(partialLockHitChance(3, 1, 2) - 2 / 3) < 1e-9, '']);
+  const wand = items[1];
+  const raw = readJson(path.join(root, 'public', 'data', 'craft', `base-${wand.baseId}.json`));
+  const fullLock = raw.mods.find(row => row[7] && row[7].meta === 'nchg_pre');
+  raw.mods.push([99002, '2 Prefix Modifiers cannot be changed', 's', 'bench', fullLock[4], [], fullLock[6],
+    { meta: 'nchg_pre2', cost: [{ 'Divine Orb': 2 }] }]);
+  const B = forBaseItem(prepareBase(raw, covens), wand.baseItem, covens);
+  const lock = B.byId.get(99002);
+  checks.push(['the partial lock is read from its text', JSON.stringify(partialLockOf(lock)) === '{"side":"p","count":2}', '']);
+  // Two Annuls after the lock: both protected prefixes stay unless the first Annul takes the lock (1 in 2) and the
+  // second then a protected prefix (2 in 3): 1/2 + 1/2 x 1/3 = 2/3.
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const prefixes = B.mods.filter(mod => mod.affix === 'p' && mod.src !== 'bench' && mod.tiers.length).slice(0, 3);
+  const runs = 3000;
+  let keptBoth = 0;
+  for (let run = 0; run < runs; run++) {
+    const item = newItem(B, { ilvl: 84, infl: [], rarity: 'rare' });
+    for (const mod of prefixes) {
+      item.mods.push({ m: mod, t: 0, side: 'p' });
+    }
+    apply(item, 'bench', { mod: lock, tier: 0 }, rnd);
+    const locked = item.mods.filter(x => x.partialLocked).map(x => x.m.id);
+    apply(item, 'annul', null, rnd);
+    apply(item, 'annul', null, rnd);
+    const left = new Set(item.mods.map(x => x.m.id));
+    if (locked.length === 2 && locked.every(id => left.has(id))) {
+      keptBoth++;
+    }
+  }
+  const share = keptBoth / runs;
+  checks.push(['protected prefixes survive two Annuls 2 times in 3', Math.abs(share - 2 / 3) < 0.03, `${(share * 100).toFixed(1)}%`]);
+  return checks;
+}
+
+console.log('\nPatch rules');
+for (const [what, passed, details] of patchRuleChecks()) {
+  console.log(`  ${passed ? 'ok  ' : 'FAIL'} ${what}${details ? ` (${details})` : ''}`);
+  if (!passed) {
+    failed = true;
   }
 }
 

@@ -44,6 +44,7 @@
 </header>
 
 <main>
+  <div class="api-down" id="api-down" role="status" aria-live="polite" hidden></div>
   <section class="hero" id="hero" aria-live="polite">
     <p class="intro">Free Path of Exile 1 and Path of Exile 2 Currency Exchange analyzer. Prices for every currency, scarab, essence, divination card and fragment on the exchange, built from GGG's hourly exchange history for PC, Xbox and PlayStation leagues, including private leagues. Find cross-currency flips, profitable trade routes, vendor recipes, bid–ask spreads for market making and off-market odd trades, and plan crafts (including Ruthless) priced at live exchange rates.</p>
     <p class="status" id="status">Loading exchange data…</p>
@@ -52,6 +53,7 @@
   <div class="folders" role="tablist" id="folders" aria-label="Sections">
     <button role="tab" id="folder-economy" data-folder="economy" aria-controls="tabs" aria-selected="true">Economy</button>
     <button role="tab" id="folder-crafting" data-folder="crafting" aria-controls="tabs" aria-selected="false" tabindex="-1">Crafting</button>
+    <button role="tab" id="folder-builds" data-folder="builds" aria-controls="tabs" aria-selected="false" tabindex="-1">Builds</button>
     <button role="tab" id="folder-settings" data-folder="settings" aria-controls="tabs" aria-selected="false" tabindex="-1">Settings / Guide</button>
   </div>
 
@@ -68,6 +70,7 @@
     <button role="tab" id="tab-lab" data-tab="lab" aria-controls="panel">Lab</button>
     <button role="tab" id="tab-craft" data-tab="craft" aria-controls="panel" hidden>Crafting</button>
     <button role="tab" id="tab-craftr" data-tab="craftr" aria-controls="panel" hidden>Crafting (Ruthless)</button>
+    <button role="tab" id="tab-buildmaker" data-tab="buildmaker" aria-controls="panel" hidden>Build maker</button>
     <button role="tab" id="tab-guide" data-tab="guide" aria-controls="panel" hidden>Guide</button>
   </nav>
 

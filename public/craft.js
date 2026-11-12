@@ -117,7 +117,7 @@ export function prepareBase(raw, index) {
   for (const mod of mods) {
     byId.set(mod.id, mod);
   }
-  return { id: raw.id, name: info.name, info, max: { p: affixesPerSide, s: affixesPerSide }, slots: affixesPerSide * 2, mods, byId };
+  return { id: raw.id, name: info.name, info, max: { p: affixesPerSide, s: affixesPerSide }, slots: affixesPerSide * 2, mods, byId, rules: gameRulesOf(index) };
 }
 
 // An experimented base item (Heist: Helical Ring, Focused Amulet, ...) as its own base: its
@@ -283,6 +283,21 @@ export function count(item, side) {
     }
   }
   return n;
+}
+
+// Rules that changed between patches, chosen by the league Craft of Exile's data covers (index.dataLeague, its
+// newest league). Data without that field, and the leagues below, are modelled as up to 3.29.
+// - annulRespectsTypeBlock: up to 3.29 an Orb of Annulment can't remove a mod that a bench "Cannot roll Caster
+//   Modifiers" (or Attack) protects. 3.30 ends that (patchnotes.txt, 3.30.0 Item Changes): Annulment then removes
+//   caster or attack mods like any other, and "Cannot roll ..." + Annul is no longer a way to keep them.
+const LEAGUES_UP_TO_3_29 = new Set(['Allflame', 'Mirage', 'Phrecia2', 'Keepers', 'Mercenaries', 'Phrecia', 'Settlers',
+  'Necropolis', 'Affliction', 'Ancestor', 'Crucible', 'Sanctum', 'Kalandra', 'Sentinel', 'Archnemesis', 'Scourge',
+  'Expedition', 'Ultimatum', 'Ritual', 'Heist']);
+
+export function gameRulesOf(index) {
+  const league = index?.dataLeague;
+  const upTo329 = !league || LEAGUES_UP_TO_3_29.has(league);
+  return { annulRespectsTypeBlock: upTo329 };
 }
 
 // The bench metamods on the item, as flags: {nchg_pre: true, no_attack: true, ...}.
@@ -870,10 +885,38 @@ function addRandom(item, n, opts, rnd) {
 }
 
 // The mods a removal can take: not fractured, not on a locked side (and on `side`, if given).
+// A mod a 3.30 partial lock protects: picked when the lock was crafted, safe only while the lock is still on.
+function isPartiallyLocked(item, x) {
+  if (!x.partialLocked) {
+    return false;
+  }
+  return item.mods.some(y => partialLockOf(y.m));
+}
+
+// Puts a crafted metamod on the item. A partial lock protects that many random mods of its side.
+function placeMetamod(item, mod, tier, rnd) {
+  item.mods.push({ m: mod, t: tier, side: mod.affix, crafted: true });
+  const partial = partialLockOf(mod);
+  if (!partial) {
+    return;
+  }
+  const candidates = [];
+  for (const x of item.mods) {
+    x.partialLocked = false;
+    if (x.side === partial.side && !x.crafted) {
+      candidates.push(x);
+    }
+  }
+  for (let picked = 0; picked < partial.count && candidates.length; picked++) {
+    const position = Math.floor(rnd() * candidates.length);
+    candidates.splice(position, 1)[0].partialLocked = true;
+  }
+}
+
 function removableMods(item, side) {
   const removable = [];
   for (const x of item.mods) {
-    if (x.frac) {
+    if (x.frac || isPartiallyLocked(item, x)) {
       continue;
     }
     if (side && x.side !== side) {
@@ -891,6 +934,9 @@ function removableMods(item, side) {
 // keeps caster mods, "Cannot roll Attack Modifiers" attack mods. (Annulment respects these
 // metamods on explicit mods; reforges, which reroll the whole unlocked item, don't.)
 function annulProtectedTags(item) {
+  if (item.B?.rules && !item.B.rules.annulRespectsTypeBlock) {
+    return []; // 3.30 and later: the metamod no longer stops an Annul
+  }
   const flags = metaFlags(item);
   const tags = [];
   if (flags.no_caster) {
@@ -925,7 +971,7 @@ function removeRandom(item, rnd, side, protectedTags = []) {
 function reroll(item, keepFilter = () => false) {
   const kept = [];
   for (const x of item.mods) {
-    if (x.frac || sideIsLocked(item, x.side) || keepFilter(x)) {
+    if (x.frac || sideIsLocked(item, x.side) || isPartiallyLocked(item, x) || keepFilter(x)) {
       kept.push(x);
     }
   }
@@ -1102,7 +1148,7 @@ function applyMatron(item, arg, rnd, receipt) {
     return failed('No metamod fits');
   }
   const metamod = fitting[Math.floor(rnd() * fitting.length)];
-  item.mods.push({ m: metamod, t: 0, side: metamod.affix, crafted: true });
+  placeMetamod(item, metamod, 0, rnd);
   receipt.pay(MATRON);
   return succeeded('Matron added "' + metamod.text + '"', receipt);
 }
@@ -1677,7 +1723,7 @@ function applyBenchCraft(item, craft, rnd, receipt) {
   if (mod.groups.some(g => modGroupsOn(item).has(g))) {
     return failed('The item already has a mod of this kind');
   }
-  item.mods.push({ m: mod, t: craft.tier, side: mod.affix, crafted: true });
+  placeMetamod(item, mod, craft.tier, rnd);
   for (const [currency, amount] of Object.entries(mod.cost?.[craft.tier] ?? {})) {
     receipt.pay(currency, amount);
   }
@@ -2526,6 +2572,34 @@ function cheapestBlocker(B, item, side, price) {
     }
   }
   return best;
+}
+
+// 3.30's partial locks ("1 Prefix Modifier cannot be changed", "2 Suffix Modifiers cannot be changed"): the bench
+// protects that many random mods of the side, and crafting it again picks again. Recognised by their text, since
+// their flag names aren't known before the data has them. Returns {side, count} or null.
+export function partialLockOf(mod) {
+  if (!mod?.meta || mod.src !== 'bench') {
+    return null;
+  }
+  const match = /^([12]) (Prefix|Suffix) Modifiers? cannot be changed$/i.exec(mod.text.trim());
+  if (!match) {
+    return null;
+  }
+  return { side: match[2].toLowerCase() === 'prefix' ? 'p' : 's', count: Number(match[1]) };
+}
+
+// The chance that `count` mods picked at random from `onSide` include `wanted` given ones:
+// C(onSide - wanted, count - wanted) / C(onSide, count).
+export function partialLockHitChance(onSide, wanted, count) {
+  if (wanted > count || wanted > onSide) {
+    return 0;
+  }
+  const picks = Math.min(count, onSide);
+  let chance = 1;
+  for (let i = 0; i < wanted; i++) {
+    chance *= (picks - i) / (onSide - i);
+  }
+  return chance;
 }
 
 // The bench metamod with this flag ('nchg_pre', 'no_attack', 'mul_mods', ...).
@@ -4208,9 +4282,10 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
   const deadMods = T.map(t => ({ id: -1, text: '', affix: t.side, src: 'junk', groups: t.m.groups, tags: [], tiers: [{ ilvl: 0, w: 0, values: [] }] }));
   const max = B.max;
   // A metamod ("Prefixes/Suffixes Cannot Be Changed", "Cannot roll Attack Modifiers", ...): the
-  // bench, or a Wild Bristle Matron, which adds a random metamod that fits an open side. On
-  // these bases that's 1 prefix metamod and 4 suffix ones, so with only a suffix open it's
-  // 1 in 4. A wrong one costs an Orb of Scouring to remove at the bench, then try again: on
+  // bench, or a Wild Bristle Matron, which adds a random metamod that fits an open side: one of
+  // the bench metamods the data lists for the base (up to 3.29, 1 prefix metamod and 4 suffix
+  // ones, so with only a suffix open it's 1 in 4; 3.30's four new "1 or 2 Prefix/Suffix Modifiers
+  // cannot be changed" options join that pool once the data has them, making each rarer). A wrong one costs an Orb of Scouring to remove at the bench, then try again: on
   // average N Matrons and N - 1 Scourings. prefixCount/suffixCount: mods on each side before it.
   const metas = B.mods.filter(m => m.meta && m.src === 'bench');
   function lockPrice(lock, prefixCount, suffixCount) {
@@ -4847,6 +4922,118 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     }
   }
 
+  // ---------- 3.30 partial locks ----------
+  // "1/2 Prefix (Suffix) Modifiers cannot be changed" protects that many random mods of its side. To keep the wanted
+  // mods there (all of them, and no more than the lock holds), it is crafted until the random pick covers them:
+  // on average 1 / chance crafts, each wrong one removed at the bench for an Orb of Scouring.
+  const partialLocks = B.mods.filter(mod => partialLockOf(mod));
+
+  // The wanted mods a partial lock on `side` should protect (the fractured one is safe already), or null.
+  const partialLockKeep = (F, st, side, lock) => {
+    const keep = [];
+    for (let k = 0; k < st.length; k++) {
+      if (st[k] === 1 && k !== F && T[k].side === side) {
+        keep.push(k);
+      }
+    }
+    if (!keep.length || keep.length > partialLockOf(lock).count) {
+      return null;
+    }
+    return keep;
+  };
+
+  // The expected price of a partial lock that covers `keep` among the `onSide` mods of its side, with its bill;
+  // null when it can't. Two ways to get it: the bench (1 / chance crafts), or a Wild Bristle Matron, which gives
+  // one of the metamods that fit an open side at random (prefixCount/suffixCount: mods on each side now), so
+  // fitting / chance Matrons. Each wrong result is removed at the bench for an Orb of Scouring. The cheaper wins.
+  const partialLockPrice = (lock, keep, onSide, prefixCount, suffixCount) => {
+    const chance = partialLockHitChance(onSide, keep.length, partialLockOf(lock).count);
+    if (chance <= 0) {
+      return null;
+    }
+    const scour = P(CUR.scour);
+    const ways = [];
+    const benchPrice = benchCost(lock, 0, P);
+    if (benchPrice != null && isFinite(benchPrice)) {
+      const crafts = 1 / chance;
+      const removals = crafts - 1;
+      const lockBill = {};
+      for (const [currency, amount] of Object.entries(benchBill(lock, 0))) {
+        lockBill[currency] = amount * crafts;
+      }
+      const via = crafts > 1 ? ` (covers them 1 in ${roundTenth(crafts)}; recraft it, removing a wrong one for an ${CUR.scour})` : '';
+      ways.push({
+        cost: crafts * benchPrice + (removals > 0 ? removals * scour : 0),
+        name: `"${lock.text}"${via}`,
+        bill: combineBills(lockBill, removals > 0 ? billOf(CUR.scour, removals) : null),
+      });
+    }
+    if (opt.matron && isFinite(P(MATRON))) {
+      const fitting = metas.filter(m => (m.affix === 'p' ? prefixCount < max.p : suffixCount < max.s));
+      if (fitting.includes(lock)) {
+        const pulls = fitting.length / chance;
+        const removals = pulls - 1;
+        ways.push({
+          cost: pulls * P(MATRON) + (removals > 0 ? removals * scour : 0),
+          name: `"${lock.text}" via Wild Bristle Matron (1 in ${roundTenth(pulls)} gives it covering them; remove a wrong one at the bench for an ${CUR.scour})`,
+          bill: combineBills(billOf(MATRON, pulls), removals > 0 ? billOf(CUR.scour, removals) : null),
+        });
+      }
+    }
+    const usable = ways.filter(way => isFinite(way.cost));
+    if (!usable.length) {
+      return null;
+    }
+    usable.sort((first, second) => first.cost - second.cost);
+    return usable[0];
+  };
+  const roundTenth = value => Math.round(value * 10) / 10;
+
+  // The state with only the protected mods (and the fractured one) left.
+  const keptByPartialLock = (F, keep) => {
+    const kept = new Array(K).fill(0);
+    for (const k of keep) {
+      kept[k] = 1;
+    }
+    if (F >= 0) {
+      kept[F] = 1;
+    }
+    return kept;
+  };
+
+  // Partial lock + Chaos Orb: everything but the protected mods (and the fractured one) rerolls.
+  function addPartialLockReforges(list, F, st, jp, js) {
+    if (!allowed('lockchaos') || !isFinite(P(CUR.chaos))) {
+      return;
+    }
+    for (const lock of partialLocks) {
+      const side = partialLockOf(lock).side;
+      const keep = partialLockKeep(F, st, side, lock);
+      if (!keep) {
+        continue;
+      }
+      const onSide = sideCount(st, side) + (side === 'p' ? jp : js);
+      const price = partialLockPrice(lock, keep, onSide, sideCount(st, 'p') + jp, sideCount(st, 's') + js);
+      if (!price) {
+        continue;
+      }
+      const keptSt = keptByPartialLock(F, keep);
+      list.push(reforge(`plock:${lock.id}:${keptSt.join('')}:${onSide}|${F}`, () => {
+        const lockOnItem = { m: lock, t: 0, side: lock.affix, crafted: true };
+        const item = itemFor(F, keptSt, fjP(F), fjS(F), [lockOnItem]);
+        const rolled = missingRollable(keptSt);
+        const outcomes = rollOutcomes(item, rolled.map(k => T[k]), rerollDist(B, item.mods.length));
+        return {
+          name: `${price.name} + ${CUR.chaos}`,
+          family: 'lockchaos',
+          cost: price.cost + P(CUR.chaos),
+          outs: mapRoll(F, keptSt, fjP(F), fjS(F), rolled, outcomes),
+          bill: combineBills(price.bill, billOf(CUR.chaos)),
+        };
+      }));
+    }
+  }
+
   // Every reforge from a state (variant: the dominant side for Eldritch Chaos, if any).
   function reforgesFor(F, st, jp, js, variant) {
     const list = [];
@@ -4859,6 +5046,7 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     for (const side of ['p', 's']) {
       addOneSideReforges(list, F, st, jp, js, variant, side);
     }
+    addPartialLockReforges(list, F, st, jp, js);
     const found = list.filter(Boolean);
     // The Allflame bench version of each reforge it can do: see afK outcomes, keep the best.
     if (afOn) {
@@ -5173,8 +5361,8 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     // type, so wanted caster mods are safe while junk goes (+1 gem prefixes stay while a wrongly
     // unveiled prefix is annulled). The metamod can eat the Annul itself.
     function addBlockedTypeAnnul() {
-      if (!totalMods) {
-        return;
+      if (!totalMods || (B.rules && !B.rules.annulRespectsTypeBlock)) {
+        return; // 3.30 and later: the metamod no longer stops an Annul, so this is a plain Annul plus a cost
       }
       for (const flag of ['no_caster', 'no_attack']) {
         const metamod = findMetamod(B, flag);
@@ -5230,6 +5418,64 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
         outs.push(outcomeOf(F, st, jp, js, 1 / (removable + 1))); // the Annul took the metamod
         const lp = lockPrice(lock, prefixCount, suffixCount);
         out.push({ name: `${lockName(lock, lp)} + ${CUR.annul}`, how: 'lockannul', side, cost: lp.cost + P(CUR.annul), outs, bill: combineBills(lp.bill, billOf(CUR.annul)) });
+      }
+    }
+
+    // Partial lock, then Annul or Scour: the protected wanted mods stay, anything else (either side) can go.
+    // The Annul can also take the lock itself.
+    function addPartialLockMoves() {
+      for (const lock of partialLocks) {
+        const side = partialLockOf(lock).side;
+        const keep = partialLockKeep(F, st, side, lock);
+        if (!keep || !hasRoom[lock.affix]) {
+          continue;
+        }
+        const onSide = sideCount(st, side) + (side === 'p' ? jp : js);
+        const price = partialLockPrice(lock, keep, onSide, prefixCount, suffixCount);
+        if (!price) {
+          continue;
+        }
+        const kept = new Set(keep);
+        // What an Annul can take: an unprotected wanted mod, a wrong tier of a target, or junk.
+        const removals = [];
+        for (let k = 0; k < st.length; k++) {
+          if (st[k] === 1 && k !== F && !kept.has(k)) {
+            const after = st.slice();
+            after[k] = 0;
+            removals.push({ st: after, jp, js });
+          } else if (st[k] === 2) {
+            const after = st.slice();
+            after[k] = 0;
+            removals.push({ st: after, jp: jp - (T[k].side === 'p' ? 1 : 0), js: js - (T[k].side === 's' ? 1 : 0) });
+          }
+        }
+        const junkPrefixes = jp - targetsOnSide(st, 'p', 2) - fjP(F);
+        const junkSuffixes = js - targetsOnSide(st, 's', 2) - fjS(F);
+        for (let i = 0; i < junkPrefixes; i++) {
+          removals.push({ st, jp: jp - 1, js });
+        }
+        for (let i = 0; i < junkSuffixes; i++) {
+          removals.push({ st, jp, js: js - 1 });
+        }
+        if (!removals.length) {
+          continue;
+        }
+        if (isFinite(P(CUR.annul))) {
+          const share = 1 / (removals.length + 1);
+          const outs = removals.map(r => outcomeOf(F, r.st, r.jp, r.js, share));
+          outs.push(outcomeOf(F, st, jp, js, share)); // the Annul took the lock
+          out.push({ name: `${price.name} + ${CUR.annul}`, how: 'plockannul', side, cost: price.cost + P(CUR.annul), outs, bill: combineBills(price.bill, billOf(CUR.annul)) });
+        }
+        // Scour: only the protected mods (and the fractured one) stay.
+        if (isFinite(P(CUR.scour))) {
+          out.push({
+            name: `${price.name} + ${CUR.scour}`,
+            how: 'plockscour',
+            cost: price.cost + P(CUR.scour),
+            bill: combineBills(price.bill, billOf(CUR.scour)),
+            outs: [outcomeOf(F, keptByPartialLock(F, keep), fjP(F), fjS(F), 1)],
+          });
+        }
       }
     }
 
@@ -5623,6 +5869,7 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     addLockAndAnnul();
     addBlockedTypeAnnul();
     addLockAndScour();
+    addPartialLockMoves();
     // With a junk mod fractured, starting a new base is always an option.
     if (F === -3 || F === -4) {
       out.push({ name: 'Start a new base', how: 'restart', cost: 0, bill: {}, outs: [{ key: 'ruined', F: -2, st, jp, js, p: 1 }] });
@@ -7294,6 +7541,12 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
         }
         return `${m.name}: an Annul can't take a ${m.tag} mod while the metamod is on, so the wanted ${m.tag} mods are safe (the metamod itself goes 1 time in ${fmtN(1 / metamodTakesIt)}); ${pctText(pGood)} it removes a mod you don't need. ${unveilWarning}Remove the metamod after.`;
       }
+      case 'plockannul': {
+        const lockTakesIt = m.outs[m.outs.length - 1].p;
+        return `${m.name}: the protected mods stay, anything else on either side can go (the metamod itself 1 time in ${fmtN(1 / lockTakesIt)}); ${pctText(pGood)} it removes a mod you don't need. Remove the metamod after.`;
+      }
+      case 'plockscour':
+        return `${m.name}: everything but the protected mods is wiped, on both sides.`;
       case 'lockannul': {
         const metamodTakesIt = m.outs[m.outs.length - 1].p;
         return `${m.name}: only ${SIDE_NAME[m.side]}es can go (the metamod itself 1 time in ${fmtN(1 / metamodTakesIt)}); ${pctText(pGood)} it removes a mod you don't need. Remove the metamod after.`;
@@ -8551,6 +8804,11 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
   // at today's prices). The best of each size by both measures.
   function fossilLab() {
     const labTargets = T.map((t, k) => k).filter(k => T[k].kind === 'roll' && k !== fixedF);
+    // Sides that have wanted rolled mods but not all of them: those get their own "land this side" ranking.
+    const labSides = ['p', 's'].filter(side => {
+      const onSide = labTargets.filter(k => T[k].side === side).length;
+      return onSide > 0 && onSide < labTargets.length;
+    });
     const rows = fossilScored.map(x => {
       const clicks = x.combo.length + 1 + (opt.ruthless ? 1 : 0); // each fossil socketed, the resonator (and a Scour)
       const chancePerTarget = labTargets.map(k => {
@@ -8564,6 +8822,17 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
       for (const o of x.outs) {
         allAtOnce = allAtOnce + (labTargets.every(k => o.st[k] === 1) ? o.p : 0);
       }
+      // One side's wanted mods at once (Craft of Exile's question when only the gem prefixes are asked for).
+      const perHitBySide = {};
+      const pBySide = {};
+      for (const side of labSides) {
+        let sideAtOnce = 0;
+        for (const o of x.outs) {
+          sideAtOnce = sideAtOnce + (labTargets.every(k => T[k].side !== side || o.st[k] === 1) ? o.p : 0);
+        }
+        pBySide[side] = sideAtOnce;
+        perHitBySide[side] = sideAtOnce > 0 ? x.cost / sideAtOnce : Infinity;
+      }
       const stopping = stopValue(x.cost, x.outs.map(o => ({ p: o.p, A: bestValueOfKey(o.key) })));
       return {
         fossils: x.combo.map(f => f.name),
@@ -8575,6 +8844,8 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
         pAll: allAtOnce,
         perHit: allAtOnce > 0 ? x.cost / allAtOnce : Infinity,
         clicksPerHit: allAtOnce > 0 ? clicks / allAtOnce : Infinity,
+        pBySide,
+        perHitBySide,
         R: stopping.R + extraTotal + benchCostTotal,
         stop: stopping.stop,
       };
@@ -8592,7 +8863,15 @@ function planOnce(B, spec, price, index, onProgress, swapIds, ctx = {}) {
     for (const r of [...rows].filter(r => isFinite(r.perHit)).sort((a, b) => a.perHit - b.perHit).slice(0, 10)) {
       shown.add(r);
     }
-    return { targets: labTargets.map(label), rows: [...shown].sort((a, b) => a.R - b.R), best, tried: rows.length, ruthless: !!opt.ruthless };
+    const bySide = [];
+    for (const side of labSides) {
+      const cheapest = rows.filter(r => isFinite(r.perHitBySide[side])).sort((a, b) => a.perHitBySide[side] - b.perHitBySide[side]).slice(0, 3);
+      for (const r of cheapest) {
+        shown.add(r);
+      }
+      bySide.push({ side, targets: labTargets.filter(k => T[k].side === side).map(label), rows: cheapest });
+    }
+    return { targets: labTargets.map(label), rows: [...shown].sort((a, b) => a.R - b.R), best, bySide, tried: rows.length, ruthless: !!opt.ruthless };
   }
   if (phase === 'fossil' && bestSol && fossilScored.length && !ctx.bestOnly && !ctx.sub) {
     results.push({ key: 'fossillab', name: 'Fossil lab', hidden: true, ok: false, cost: Infinity, steps: [], notes: [], lab: fossilLab() });

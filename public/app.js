@@ -9,6 +9,7 @@ import { FORMULAS, PARAMS, PRESETS, LABS } from './formulas.js';
 import { buildRecipes } from './recipes.js';
 import { craftPanel } from './crafting.js';
 import { farmingPanel, FARM_STAGES, PAST_LEAGUES, pastLeagueStages } from './farming.js';
+import { buildMakerPanel } from './buildmaker.js';
 
 const API = '/api/cx';
 const HOUR = 3600;
@@ -19,6 +20,7 @@ const ROW_LIMIT = 100;
 const TAB_FOLDERS = [
   { id: 'economy', tabs: ['picks', 'flips', 'routes', 'recipes', 'prices', 'spreads', 'odd', 'farming', 'leagueend', 'lab'] },
   { id: 'crafting', tabs: ['craft', 'craftr'] },
+  { id: 'builds', tabs: ['buildmaker'] },
   { id: 'settings', tabs: ['guide'] },
 ];
 const TABS = [];
@@ -186,15 +188,91 @@ function ratioText(p, payId, getId) {
   return `give ${r[0].toLocaleString('en-US')} ${short(payId)}, get ${r[1].toLocaleString('en-US')} ${short(getId)}`;
 }
 
+// ---------- GGG's exchange API: is it answering? ----------
+// The proxy (functions/api/cx) answers 404 for an hour GGG hasn't published yet, which is normal, and 502/504
+// (or GGG's own 5xx and 429) when GGG doesn't answer properly. Every request reports here, so a banner can say the
+// outage is on GGG's side instead of the page claiming nothing was published.
+const apiHealth = { down: false, since: null, status: null, offline: false };
+
+function isUpstreamFailure(status) {
+  return status === 429 || status >= 500;
+}
+
+function markApiAnswered() {
+  if (!apiHealth.down && !apiHealth.offline) {
+    return;
+  }
+  apiHealth.down = false;
+  apiHealth.offline = false;
+  apiHealth.since = null;
+  apiHealth.status = null;
+  renderApiWarning();
+}
+
+function markApiDown(status) {
+  if (!apiHealth.down) {
+    apiHealth.since = Date.now();
+  }
+  apiHealth.down = true;
+  apiHealth.offline = false;
+  apiHealth.status = status;
+  renderApiWarning();
+}
+
+// The request never reached this site: the visitor's own connection, not GGG.
+function markNetworkFailure() {
+  if (navigator.onLine === false) {
+    apiHealth.offline = true;
+    renderApiWarning();
+  }
+}
+
+function renderApiWarning() {
+  const box = document.getElementById('api-down');
+  if (!box) {
+    return;
+  }
+  if (apiHealth.offline) {
+    box.replaceChildren(el('b', {}, 'You seem to be offline.'), ' The page will load the exchange data once your connection is back.');
+    box.hidden = false;
+    return;
+  }
+  if (!apiHealth.down) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+  const since = new Date(apiHealth.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const shown = state.m && state.latest ? ` You're seeing data up to ${hourLabel(state.latest + HOUR)}.` : '';
+  box.replaceChildren(
+    el('b', {}, 'GGG\'s Currency Exchange API isn\'t answering'),
+    ` (HTTP ${apiHealth.status}, since ${since}). This is on GGG's side, not this site's.${shown} The page keeps retrying and updates by itself once it's back.`);
+  box.hidden = false;
+}
+
 // ---------- fetching ----------
 const cache = new Map();
 function getHour(realm, t) {
   const key = (realm ? realm + '/' : '') + t;
   if (cache.has(key)) return cache.get(key);
   const once = () => fetch(`${API}/${key}`, { signal: AbortSignal.timeout(45000) }).then(async r => {
-    if (r.status === 404) return null;
-    if (!r.ok) throw new Error(`Exchange API answered ${r.status} for hour ${t}`);
+    if (r.status === 404) {
+      markApiAnswered();
+      return null;
+    }
+    if (!r.ok) {
+      const error = new Error(`Exchange API answered ${r.status} for hour ${t}`);
+      error.upstream = isUpstreamFailure(r.status);
+      if (error.upstream) {
+        markApiDown(r.status);
+      }
+      throw error;
+    }
+    markApiAnswered();
     return { t, markets: compact((await r.json()).markets || []) };
+  }, error => {
+    markNetworkFailure();
+    throw error;
   });
   // Old hours can be slow the first time anyone asks for them; give each two tries.
   const p = once().catch(() => once());
@@ -212,6 +290,11 @@ async function findLatest(realm) {
     const slow = t === now - HOUR ? new Promise(r => setTimeout(() => r('slow'), 6000)) : null;
     const got = await (slow ? Promise.race([getHour(realm, t), slow]) : getHour(realm, t)).catch(() => null);
     if (got && got !== 'slow') return t;
+  }
+  if (apiHealth.down) {
+    const error = new Error(`GGG's Currency Exchange API isn't answering (HTTP ${apiHealth.status})`);
+    error.upstream = true;
+    throw error;
   }
   throw new Error('No exchange data published in the last six hours.');
 }
@@ -739,6 +822,9 @@ addEventListener('focus', () => badgeTitle(0));
 
 // Called after every automatic update: tell the person what's new.
 function announce() {
+  if (!state.m) {
+    return; // nothing loaded to compare (the reload failed or no league traded)
+  }
   const picks = pickRows(state.m, false);
   const before = live.lastPicks;
   live.lastPicks = new Set(picks.map(p => p.key));
@@ -765,7 +851,13 @@ async function checkForNewHour() {
   if (Date.now() / 1000 < next + HOUR + 15) return;
   live.checking = true;
   try {
-    if (await getHour(state.realm, next).catch(() => null)) { await load({ quiet: true }); announce(); }
+    // announce() compares against the loaded picks, so it runs only when the reload really brought new data.
+    if (await getHour(state.realm, next).catch(() => null)) {
+      const loaded = await load({ quiet: true });
+      if (loaded && state.m) {
+        announce();
+      }
+    }
   } finally { live.checking = false; }
   renderLive();
 }
@@ -1409,6 +1501,12 @@ const panels = {
       supplyLoading: () => !loadedHistory() && !!hist && !hist.model });
   },
 
+  buildmaker() {
+    // Only the Divine Orb's price is needed, from a day of history when loaded, else the latest hours.
+    const todayModel = () => loadedHistory() ?? state.m;
+    return buildMakerPanel({ el, store, rerender: renderPanel, realm: () => state.realm, exchangePrice: farmExchangePrice(todayModel) });
+  },
+
   craftr() {
     if (gameOf(state.realm) === 'poe2') return [el('p', { class: 'empty' }, 'Ruthless crafting is for PoE 1. Switch the realm to a PoE 1 one.')];
     const r = ruthlessModel();
@@ -1661,7 +1759,8 @@ function renderPanel() {
   renderTabBar();
   $('#panel').setAttribute('aria-labelledby', 'tab-' + state.tab);
   const panel = $('#panel');
-  if (!state.m) { panel.replaceChildren(); return; }
+  // The Build maker reads its own files and poe.ninja, so it doesn't wait for the exchange to load.
+  if (!state.m && state.tab !== 'buildmaker') { panel.replaceChildren(); return; }
   const focused = document.activeElement?.closest('#panel') && document.activeElement.type === 'search';
   panel.replaceChildren(...panels[state.tab]());
   if (focused) { const n = $('#panel input[type=search]'); n?.focus(); n?.setSelectionRange(n.value.length, n.value.length); }
@@ -1698,6 +1797,11 @@ function renderHero() {
 const setStatus = (text, err = false) => $('#hero').replaceChildren(el('p', { class: 'status' + (err ? ' err' : '') }, text));
 
 // ---------- wiring ----------
+const OUTAGE_RETRY_MS = 60 * 1000;
+let outageRetry = null;
+
+// Loads the window. Returns true when new data is in place. A quiet (automatic) reload that fails keeps what's on
+// screen; a first load that fails because GGG is down says so and tries again every minute.
 async function load({ quiet = false } = {}) {
   const realm = state.realm, n = state.window;
   try {
@@ -1706,16 +1810,39 @@ async function load({ quiet = false } = {}) {
     const { pages, failed } = await loadPages(realm, latest, n, (d, t) => !quiet && t > 1 && setStatus(`Loading hour ${d} of ${t}…`));
     // Forget hours that have fallen out of every window we might show.
     for (const k of cache.keys()) if (Number(k.split('/').pop()) < latest - 200 * HOUR) cache.delete(k);
-    if (realm !== state.realm || n !== state.window) return; // settings changed mid-load
+    if (realm !== state.realm || n !== state.window) return false; // settings changed mid-load
     Object.assign(state, { items, pages, failed, latest, recipes: buildRecipes(gameOf(realm), items) });
     stars = new Set(store.get(starKey(), []));
     fillLeagues();
     rebuild();
+    renderApiWarning();
+    return true;
   } catch (e) {
     console.error(e);
-    setStatus(`Couldn't load exchange data: ${e.message}. The page needs its /api/cx proxy. Run it with "npm run dev" (Cloudflare Pages), not by opening the file directly.`, true);
+    if (quiet && state.m) {
+      renderApiWarning();
+      return false; // keep showing the hours already loaded
+    }
+    if (e.upstream) {
+      setStatus('GGG\'s Currency Exchange API isn\'t answering right now, so there is no exchange data to show. This is on GGG\'s side; the page tries again every minute.', true);
+      scheduleOutageRetry();
+    } else {
+      setStatus(`Couldn't load exchange data: ${e.message}. The page needs its /api/cx proxy. Run it with "npm run dev" (Cloudflare Pages), not by opening the file directly.`, true);
+    }
     state.m = null; renderPanel();
+    renderApiWarning();
+    return false;
   }
+}
+
+function scheduleOutageRetry() {
+  if (outageRetry !== null) {
+    return;
+  }
+  outageRetry = setTimeout(() => {
+    outageRetry = null;
+    load();
+  }, OUTAGE_RETRY_MS);
 }
 
 function fillLeagues() {

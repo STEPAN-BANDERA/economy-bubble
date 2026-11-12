@@ -25,9 +25,10 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from text_files import read_utf8, use_utf8_console, write_utf8
+
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / ".cache" / "dat"
-CLI = ROOT / "node_modules" / ".bin" / "pathofexile-dat"
 CDN_FIX = ROOT / "scripts" / "dat_preload.mjs"
 UA = "faustus-ledger/0.1 (currency exchange viewer)"
 
@@ -43,6 +44,15 @@ TABLES = [
     {"name": "CurrencyExchangeCategories", "columns": ["Id", "Name"]},
     {"name": "BaseItemTypes", "columns": ["Id", "Name"]},
 ]
+
+
+def dat_cli_path():
+    # npm puts a shell script in node_modules/.bin on Linux and macOS, but on Windows that file can't be
+    # started directly (WinError 193); npm writes a pathofexile-dat.cmd wrapper next to it for Windows.
+    bin_directory = ROOT / "node_modules" / ".bin"
+    if sys.platform == "win32":
+        return bin_directory / "pathofexile-dat.cmd"
+    return bin_directory / "pathofexile-dat"
 
 
 def current_patch(game):
@@ -64,11 +74,14 @@ def current_patch(game):
 def export(game, patch):
     work = CACHE / game
     work.mkdir(parents=True, exist_ok=True)
-    (work / "config.json").write_text(json.dumps({"patch": patch, "translations": ["English"], "tables": TABLES}, indent=1))
+    write_utf8(work / "config.json", json.dumps({"patch": patch, "translations": ["English"], "tables": TABLES}, indent=1))
     env = {**os.environ, "NODE_OPTIONS": f"--import {CDN_FIX.as_uri()}"}
-    subprocess.run([str(CLI)], cwd=work, check=True, env=env)
+    cli = dat_cli_path()
+    if not cli.exists():
+        raise RuntimeError(f"{cli} is missing; run npm install first")
+    subprocess.run([str(cli)], cwd=work, check=True, env=env)
     out = work / "tables" / "English"
-    return {t["name"]: json.loads((out / f"{t['name']}.json").read_text(encoding="utf-8")) for t in TABLES}
+    return {t["name"]: json.loads(read_utf8(out / f"{t['name']}.json")) for t in TABLES}
 
 
 def trade_icons(game):
@@ -106,12 +119,13 @@ def build(game):
         }
     out = ROOT / "public" / "data" / f"items-{game}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"patch": patch, "items": items}, separators=(",", ":"), ensure_ascii=False))
+    write_utf8(out, json.dumps({"patch": patch, "items": items}, separators=(",", ":"), ensure_ascii=False))
     print(f"[{game}] patch {patch}: {len(items)} exchange items, {len(no_icon)} without icon -> {out.relative_to(ROOT)}")
     if no_icon:
         print("  no icon:", ", ".join(sorted(no_icon)[:30]), "..." if len(no_icon) > 30 else "")
 
 
 if __name__ == "__main__":
+    use_utf8_console()
     for g in sys.argv[1:] or ("poe1", "poe2"):
         build(g)

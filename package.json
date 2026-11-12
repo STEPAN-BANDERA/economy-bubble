@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "wrangler pages dev ./public",
     "deploy": "wrangler pages deploy ./public --project-name faustus-ledger",
-    "items:build": "python3 scripts/fetch_exchange_items.py poe1 poe2",
-    "craft:build": "python3 scripts/fetch_craft_data.py && python3 scripts/fetch_ninja_targets.py && python3 scripts/fetch_ninja_targets.py 8 4 --ruthless",
+    "items:build": "node scripts/run_python.mjs scripts/fetch_exchange_items.py poe1 poe2",
+    "craft:build": "node scripts/run_python.mjs scripts/fetch_craft_data.py && node scripts/run_python.mjs scripts/fetch_ninja_targets.py && node scripts/run_python.mjs scripts/fetch_ninja_targets.py 8 4 --ruthless",
+    "builds:build": "node scripts/run_python.mjs scripts/build_game_data.py && node scripts/run_python.mjs scripts/build_mechanics.py && node scripts/run_python.mjs scripts/fetch_build_meta.py && node scripts/run_python.mjs scripts/fetch_unique_prices.py && node scripts/generate_builds.mjs",
     "test:craft": "node scripts/craft_regression.mjs",
+    "test:builds": "node scripts/test_builds.mjs && node scripts/run_python.mjs scripts/test_mechanics.py",
     "test:proxy": "node scripts/test_ninja_proxy.mjs"
   },
   "devDependencies": {

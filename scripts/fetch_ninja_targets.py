@@ -18,91 +18,21 @@ poe.ninja endpoints (public, used by its own site):
 
 Player and account names are used only to fetch the items and are not saved.
 """
-import hashlib
 import json
 import re
 import sys
 import time
 import urllib.parse
-import urllib.request
 from pathlib import Path
+
+from ninja_builds import get, search_names
+from text_files import read_utf8, use_utf8_console, write_utf8
 
 ROOT = Path(__file__).resolve().parent.parent
 CRAFT = ROOT / "public" / "data" / "craft"
-CACHE = ROOT / ".cache" / "ninja"
-NINJA = "https://poe.ninja/poe1/api/"
-UA = "Mozilla/5.0 (faustus-ledger crafting targets build)"
 SLOTS = {"Helm": "Helmet", "BodyArmour": "Body Armour", "Gloves": "Gloves", "Boots": "Boots",
          "Belt": "Belt", "Amulet": "Amulet", "Ring": "Ring", "Ring2": "Ring", "Weapon": "Weapon",
          "Offhand": "Off-hand", "Weapon2": "Weapon", "Offhand2": "Off-hand"}
-
-
-def get(path, raw=False):
-    # Cached for a few hours so re-runs while tuning the matcher don't hit poe.ninja again.
-    cached = CACHE / hashlib.sha1(path.encode()).hexdigest()
-    if cached.exists() and time.time() - cached.stat().st_mtime < 6 * 3600:
-        body = cached.read_bytes()
-        return body if raw else json.loads(body)
-    req = urllib.request.Request(NINJA + path, headers={"User-Agent": UA})
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                body = r.read()
-            CACHE.mkdir(parents=True, exist_ok=True)
-            cached.write_bytes(body)
-            time.sleep(0.4)  # be gentle with a free service
-            return body if raw else json.loads(body)
-        except Exception:
-            if attempt == 2:
-                raise
-            time.sleep(2)
-
-
-# ---- minimal protobuf reader (wire format only, no schema) ----
-def varint(b, i):
-    r = s = 0
-    while True:
-        c = b[i]
-        i += 1
-        r |= (c & 0x7F) << s
-        s += 7
-        if c < 0x80:
-            return r, i
-
-
-def fields(b):
-    i = 0
-    while i < len(b):
-        k, i = varint(b, i)
-        f, w = k >> 3, k & 7
-        if w == 0:
-            v, i = varint(b, i)
-        elif w == 2:
-            n, i = varint(b, i)
-            v = b[i:i + n]
-            i += n
-        elif w == 1:
-            v, i = b[i:i + 8], i + 8
-        elif w == 5:
-            v, i = b[i:i + 4], i + 4
-        else:
-            raise ValueError("unsupported wire type")
-        yield f, v
-
-
-def search_names(body):
-    """The search answer's string columns: message 1 -> repeated field 12
-    {1: column id, 7: value per row}. Returns (account, name) pairs."""
-    result = next(v for f, v in fields(body) if f == 1)
-    cols = {}
-    for f, v in fields(result):
-        if f != 12:
-            continue
-        sub = list(fields(v))
-        cid = next((x.decode() for g, x in sub if g == 1), None)
-        if cid in ("name", "account"):
-            cols[cid] = [x.decode("utf-8", "replace") for g, x in sub if g == 7]
-    return list(zip(cols.get("account", []), cols.get("name", [])))
 
 
 # ---- matching item text to modifiers ----
@@ -144,7 +74,7 @@ def scaled(tiers, pct):
 
 class Matcher:
     def __init__(self, base_id, exp=None):
-        self.mods = json.loads((CRAFT / f"base-{base_id}.json").read_text())["mods"]
+        self.mods = json.loads(read_utf8(CRAFT / f"base-{base_id}.json"))["mods"]
         # Experimented bases (Helical Ring, ...) show bigger numbers: match against scaled tiers.
         mag = (exp or {}).get("mag") or {}
         if mag:
@@ -312,7 +242,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     want = int(args[0]) if len(args) > 0 else 8
     per = int(args[1]) if len(args) > 1 else 4
-    index = json.loads((CRAFT / "index-poe1.json").read_text())
+    index = json.loads(read_utf8(CRAFT / "index-poe1.json"))
 
     state = get("data/index-state")
     builds = get("data/build-index-state")
@@ -353,8 +283,9 @@ def main():
 
     out = {"league": league["leagueName"], "snapshot": snap["version"], "built": time.strftime("%Y-%m-%d"),
            "source": "poe.ninja builds", "archetypes": archetypes}
-    (CRAFT / ("targets-poe1-ruthless.json" if ruthless else "targets-poe1.json")).write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
+    write_utf8(CRAFT / ("targets-poe1-ruthless.json" if ruthless else "targets-poe1.json"), json.dumps(out, separators=(",", ":"), ensure_ascii=False))
 
 
 if __name__ == "__main__":
+    use_utf8_console()
     main()

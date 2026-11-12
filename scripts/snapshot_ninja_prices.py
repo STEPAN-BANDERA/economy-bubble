@@ -28,6 +28,7 @@ import urllib.request
 from pathlib import Path
 
 from build_ninja_history import FORBIDDEN_JEWEL_TYPE, card_items_priced_by_ninja, mean_without_dearest_tenth
+from text_files import use_utf8_console, write_utf8
 
 API_ROOT = "https://poe.ninja/poe1/api/economy"
 # poe.ninja's API docs ask for a User-Agent that names the app and a contact.
@@ -239,11 +240,12 @@ def main():
     }
     league_folder.mkdir(parents=True, exist_ok=True)
     out_path = league_folder / f"{now.strftime('%Y-%m-%dT%H')}.json"
-    out_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=0) + "\n", encoding="utf8")
+    write_utf8(out_path, json.dumps(snapshot, ensure_ascii=False, indent=0) + "\n")
     print(f"{out_path}: {len(prices)} of {len(wanted)} items")
 
 
 if __name__ == "__main__":
+    use_utf8_console()
     try:
         main()
     except SnapshotFailed as failure:
