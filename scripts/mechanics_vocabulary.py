@@ -60,7 +60,7 @@ MINOR_PATTERNS = [
     r"^\+?\d+(?:\.\d+)? to charge$", r"\bmaximum charges\b", r"\bweapon range\b",
     r"^historic$", r"^extra gore$", r"\bdestroyed when applied\b", r"^has no sockets$", r"^passives affected\b",
     r"\bveiled \((?:prefix|suffix)\)$", r"^cannot roll\b", r"^primordial$", r"^no physical damage$", r"^rampage$",
-    r"\bmana cost efficiency\b", r"\bcost efficiency\b", r"\bmovement penalties\b", r"\bmana flasks? gain\b",
+    r"\bmovement penalties\b", r"\bmana flasks? gain\b",
     r"\bcharge duration\b", r"\bmaximum rage\b", r"\bminimum rage\b", r"\bbanner buffs linger\b",
 ]
 
@@ -165,6 +165,10 @@ STAT_PHRASES = [
     ("reservation efficiency", "reservation"),
     ("mana reserved", "reservation"),
     ("reservation", "reservation"),
+    # Cost efficiency divides a cost (cost x 100 / (100 + efficiency)); "increased cost" multiplies it. Since 3.26 the
+    # tree's "reduced Cost" lines are cost efficiency (GGG's patch notes).
+    ("mana cost efficiency", "costEfficiency"),
+    ("cost efficiency", "costEfficiency"),
     ("mana cost", "cost"),
     ("cost", "cost"),
     # Flask lines say different things: how long, how strong, how often, how much life (they were all "flask").
@@ -366,6 +370,8 @@ WEAPON_REQUIREMENTS = [
 # Charges" is a state that holds some of the time.
 CONDITION_PHRASES = [
     ("masteries allocated", "masteryCount"),
+    # Precise Technique: the engine compares the build's accuracy with its life.
+    ("accuracy rating is higher than maximum life", "accuracyAboveLife"),
     ("cannot have life leeched", "unleechable"),
     # "per Raised Zombie", "per Summoned Skeleton": how many of your own minions of a kind you have, which the
     # generator doesn't plan beside a main skill; they read as 3 stacks (Umbral Army gave every attack build 45%).
@@ -819,10 +825,31 @@ def read_numeric(core, subject, condition, requires, range_mode):
 
     match = re.match(r"^(" + VALUE + r")% of (.*?)Damage (?:is )?Leeched as (Life|Mana|Energy Shield)$", core, flags=re.IGNORECASE)
     if match:
-        # Overkill leech only recovers on a kill, and mana leech recovers mana: neither keeps you alive in a fight.
-        if "overkill" in match.group(2).lower() or match.group(3).lower() == "mana":
+        # Overkill leech only recovers on a kill: it doesn't keep you alive or casting in a fight.
+        if "overkill" in match.group(2).lower():
             return effect("minor", "minor", [], None, subject, condition, requires)
+        if match.group(3).lower() == "mana":
+            # Mana leech pays for skills. Its scope matters: "Physical Attack Damage" leeches nothing for a spell or
+            # for an attack that deals no physical damage, so the damage type and attack/spell words are kept as tags.
+            tags, leftover = phrase_tags(match.group(2))
+            found = effect("flat", "manaLeech", tags, read_value(match.group(1), range_mode), subject, condition, requires)
+            if leftover:
+                found["leftover"] = leftover
+            return found
         return effect("flat", "leech", [], read_value(match.group(1), range_mode), subject, condition, requires)
+
+    # Mana gained per hit or per kill, which pays for skills as they are used.
+    match = re.match(r"^(?:Gain|\+)?\s*(" + VALUE + r") Mana (?:per Enemy Hit|gained for each Enemy hit|gained on Hit)( with Attacks| with Spells| by your Attacks| by your Spells)?$", core, flags=re.IGNORECASE)
+    if match:
+        scope = (match.group(2) or "").lower()
+        tags = ["attack"] if "attack" in scope else ["spell"] if "spell" in scope else []
+        return effect("flat", "manaOnHit", tags, read_value(match.group(1), range_mode), subject, condition, requires)
+    match = re.match(r"^(?:Gain|\+)?\s*(" + VALUE + r") Mana (?:per Enemy Killed|gained on Kill|on Kill)$", core, flags=re.IGNORECASE)
+    if match:
+        return effect("flat", "manaOnKill", [], read_value(match.group(1), range_mode), subject, condition, requires)
+    match = re.match(r"^Recover (" + VALUE + r")% of (?:maximum )?Mana (?:on Kill|when you Kill an Enemy)$", core, flags=re.IGNORECASE)
+    if match:
+        return effect("flat", "manaOnKillPercent", [], read_value(match.group(1), range_mode), subject, condition, requires)
 
     match = re.match(r"^\+?(" + VALUE + r") to (.+)$", core, flags=re.IGNORECASE)
     if match:
@@ -834,8 +861,14 @@ def read_numeric(core, subject, condition, requires, range_mode):
         found["leftover"] = leftover
         return found
 
-    match = re.match(r"^(?:Recover|Gain) (" + VALUE + r")%? (?:of )?(?:your )?(?:maximum )?(Life|Mana|Energy Shield)(?: per| on| when)(.*)$", core, flags=re.IGNORECASE)
+    match = re.match(r"^(?:Recover|Gain) (" + VALUE + r")(%)? (?:of )?(?:your )?(?:maximum )?(Life|Mana|Energy Shield)(?: per| on| when)(.*)$", core, flags=re.IGNORECASE)
     if match:
+        if match.group(3).lower() == "mana":
+            # Mana regained this way pays for skills; it was once read as life recovery (2026-11-13).
+            if "kill" in match.group(4).lower():
+                stat = "manaOnKillPercent" if match.group(2) else "manaOnKill"
+                return effect("flat", stat, [], read_value(match.group(1), range_mode), subject, condition, requires)
+            return effect("minor", "minor", [], None, subject, condition, requires)
         return effect("flat", "recovery", [], read_value(match.group(1), range_mode), subject, condition, requires)
 
     return None
@@ -985,8 +1018,13 @@ def read_special_shapes(line, subject, range_mode):
     if match:
         found = effect("socketedSupport", match.group(2).strip(), [], read_value(match.group(1), range_mode), subject, None, [])
         return found
-    match = re.match(r"^(?:Grants|Gain) (" + VALUE + r") (Life|Mana|Energy Shield) (?:per|for each) Enemy (?:Hit|you Hit)", line, flags=re.IGNORECASE)
+    match = re.match(r"^(?:Grants|Gain) (" + VALUE + r") (Life|Mana|Energy Shield) (?:per|for each) Enemy (?:Hit|you Hit)( with Attacks| with Spells)?", line, flags=re.IGNORECASE)
     if match:
+        if match.group(2).lower() == "mana":
+            # Mana on hit pays for skills, it doesn't recover life (it was read as life on hit until 2026-11-13).
+            scope = (match.group(3) or "").lower()
+            tags = ["attack"] if "attack" in scope else ["spell"] if "spell" in scope else []
+            return effect("flat", "manaOnHit", tags, read_value(match.group(1), range_mode), subject, None, [])
         return effect("flat", "onHitRecovery", [], read_value(match.group(1), range_mode), subject, None, [])
     match = re.match(r"^(" + VALUE + r")% increased Global Defences$", line, flags=re.IGNORECASE)
     if match:

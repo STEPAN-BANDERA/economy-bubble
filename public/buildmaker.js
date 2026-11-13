@@ -7,6 +7,7 @@ import {
 } from './builds.js';
 import { ideasView, ideaCard, ideaWheelCandidates, ideasReady } from './buildideas.js';
 import { plannerView } from './buildplanner.js';
+import { iconLine } from './buildicons.js';
 
 const DATA = 'data/builds/';
 // The poe.ninja proxy (functions/api/ninja) serves these; together they hold every wearable unique.
@@ -16,6 +17,8 @@ const FIRST_RESULTS = 12;
 const MORE_RESULTS = 24;
 const CARD_UNIQUES = 6;
 const CARD_SUPPORTS = 6;
+const CARD_KEYSTONES = 6;
+const CARD_AURAS = 5;
 const WHEEL_SPIN_MILLISECONDS = 4500;
 const WHEEL_FULL_TURNS = 6;
 // Fast at first, then a long slow-down, so the last slices creep past the pointer like a real wheel.
@@ -447,9 +450,9 @@ function archetypeCard(archetype, extraClass = '') {
     X.el('div', { class: 'bm-traits' }, traitChips),
     statsLine(archetype),
     costLine(archetype),
-    listLine('Uniques', archetype.uniques, CARD_UNIQUES),
-    listLine('Supports', supportsWithoutWord(archetype.supports), CARD_SUPPORTS),
-    listLine('Keystones', archetype.keystones, 6),
+    iconLine(X, 'Uniques', sharedPieces(archetype.uniques, CARD_UNIQUES)),
+    iconLine(X, 'Supports', supportPieces(archetype.supports, CARD_SUPPORTS)),
+    iconLine(X, 'Keystones', sharedPieces(archetype.keystones, CARD_KEYSTONES), { kind: 'passive', shape: 'round' }),
     aurasLine(archetype),
     listLine('Bloodline', archetype.bloodlines, 2),
     X.el('a', { class: 'bm-link-out', href: ninjaLink(archetype), target: '_blank', rel: 'noopener' }, 'See these characters on poe.ninja ↗'));
@@ -507,21 +510,30 @@ function listLine(label, entries, limit) {
   return X.el('div', { class: 'bm-list' }, X.el('span', { class: 'bm-list-label' }, label), X.el('ul', {}, items));
 }
 
-function supportsWithoutWord(supports) {
-  const shortened = [];
-  for (const [name, share] of supports ?? []) {
-    shortened.push([name.replace(/ Support$/, ''), share]);
+// [name, share] pairs as icon pieces (public/buildicons.js): the share of these players using each goes in its pop-up.
+function sharedPieces(entries, limit) {
+  const pieces = [];
+  for (const [name, share] of (entries ?? []).slice(0, limit)) {
+    pieces.push({ name, note: percent(share) });
   }
-  return shortened;
+  return pieces;
+}
+
+// A support's picture is found by its full name; the pop-up drops the word "Support".
+function supportPieces(supports, limit) {
+  const pieces = sharedPieces(supports, limit);
+  for (const piece of pieces) {
+    piece.label = piece.name.replace(/ Support$/, '');
+  }
+  return pieces;
 }
 
 function aurasLine(archetype) {
   if (!archetype.auras || archetype.auras.length === 0) {
     return null;
   }
-  const line = listLine('Auras', archetype.auras, 5);
-  line.append(X.el('span', { class: 'muted bm-aura-count' }, ' ' + archetype.auraCountAverage + ' on average'));
-  return line;
+  return iconLine(X, 'Auras', sharedPieces(archetype.auras, CARD_AURAS),
+    { extra: X.el('span', { class: 'muted bm-aura-count' }, archetype.auraCountAverage + ' on average') });
 }
 
 function ninjaLink(archetype) {

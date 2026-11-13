@@ -13,6 +13,9 @@ This folder's files are not under the repository's MIT licence.
   with each node's effects as read by this project's vocabulary. The tree is GGG's.
 - `generated-poe1.json` is our generator's builds (`scripts/generate_builds.mjs`), made from `mechanics-poe1.json`
   and so under the same licence, with poe.ninja player counts beside them.
+- `icons-poe1.json` says where each piece's picture is on Grinding Gear Games' image server (web.poecdn.com):
+  passive icons' places on the sprite sheets of their tree export, and item art paths from their game files. It
+  holds no images; the paths and pictures are GGG's. Built by `scripts/build_icons.py`.
 - `meta-poe1-*.json` and `leagues-poe1.json` are aggregates (counts, shares and medians, no player or account names)
   of [poe.ninja](https://poe.ninja/)'s public builds data, built by `scripts/fetch_build_meta.py`. Credit poe.ninja
   when you reuse them.

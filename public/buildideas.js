@@ -7,6 +7,7 @@ import { PLAYER_BANDS, prepareMechanics, rebuildFromNames, evaluateBuild, pieceG
 import { treeView } from './buildtreeview.js';
 import { scoreFunctionFor } from './buildstages.js';
 import { GEAR_LEVELS, DEFAULT_GEAR_LEVEL, craftQuery, rebuildGear, compactGear } from './buildgear.js';
+import { iconLine } from './buildicons.js';
 
 const DATA = 'data/builds/';
 const FIRST_IDEAS = 12;
@@ -348,18 +349,18 @@ export function ideaCard(storedIdea, extraClass = '', extraSections = []) {
       X.el('h4', {}, idea.ascendancy, X.el('span', { class: 'muted' }, ' · '), idea.skill),
       X.el('span', { class: 'bm-share' }, idea.baseClass)),
     X.el('div', { class: 'bm-traits' }, facts),
-    pieceLine('Supports', idea.supports.map(name => name.replace(/ Support$/, ''))),
-    pieceLine('Ascendancy', idea.notables),
-    pieceLine('Keystones', idea.keystones),
+    iconLine(X, 'Supports', supportPieces(idea.supports)),
+    iconLine(X, 'Ascendancy', namedPieces(idea.notables), { kind: 'passive' }),
+    iconLine(X, 'Keystones', namedPieces(idea.keystones), { kind: 'passive', shape: 'round' }),
     treeLine(idea),
     masteryLine(idea),
-    pieceLine('Jewels', idea.treeJewels),
-    pieceLine('Uniques', idea.uniques),
+    iconLine(X, 'Jewels', namedPieces(idea.treeJewels)),
+    iconLine(X, 'Uniques', namedPieces(idea.uniques)),
     gearSection(idea),
-    pieceLine('Auras, curse', idea.buffs),
+    iconLine(X, 'Auras, curse', namedPieces(idea.buffs)),
     pieceLine('Stacks', idea.stacking ? [STACKING_WORDS[idea.stacking] || idea.stacking] : null),
     reservedLine(idea),
-    pieceLine('Flasks', idea.flasks),
+    iconLine(X, 'Flasks', namedPieces(idea.flasks)),
     ...extraSections,
     X.el('button', { type: 'button', class: 'linklike bm-why-toggle', 'aria-expanded': open ? 'true' : 'false', onclick: () => toggleOpen(key) },
       open ? 'Hide why' : 'Why these pieces'),
@@ -426,7 +427,7 @@ function playersText(idea) {
 // The stat a build committed to stacking from the start (public/buildgen.js, STACKING_EXTRA).
 const STACKING_WORDS = { mana: 'mana', life: 'life', energyShield: 'energy shield', armour: 'armour', evasion: 'evasion' };
 
-// How much of mana and life its buffs reserve, after reservation efficiency.
+// How much of mana and life its buffs reserve, after reservation efficiency, and what is left paying for the skill.
 function reservedLine(idea) {
   const parts = [];
   if (idea.reserved > 0) {
@@ -435,7 +436,29 @@ function reservedLine(idea) {
   if (idea.reservedLife > 0) {
     parts.push(Math.round(idea.reservedLife) + '% of life');
   }
+  if (idea.reservedManaFlat > 0) {
+    parts.push(idea.reservedManaFlat + ' mana');
+  }
+  if (idea.reservedLifeFlat > 0) {
+    parts.push(idea.reservedLifeFlat + ' life');
+  }
+  const upkeep = upkeepText(idea.upkeep);
+  if (upkeep) {
+    parts.push(upkeep);
+  }
   return parts.length > 0 ? pieceLine('Reserved', parts) : null;
+}
+
+// "skill 61 mana a use, pays for itself" or "skill 154 mana a use, casts 64% of a fight": the main skill's cost, and
+// whether what isn't reserved and what comes back keep it going (public/buildgen.js, manaUpkeepOf).
+function upkeepText(upkeep) {
+  if (!upkeep) {
+    return null;
+  }
+  const lasting = upkeep.share >= 0.995 ? 'pays for itself' : 'casts ' + Math.round(upkeep.share * 100) + '% of a fight';
+  return X.el('span', { title: 'Spends about ' + upkeep.spent + ' ' + upkeep.paidWith + ' a second and gets ' + upkeep.regained
+    + ' back (regeneration, leech, on hit and on kill), over a 20-second fight with what isn’t reserved as a buffer' },
+    'skill ' + upkeep.cost + ' ' + upkeep.paidWith + ' a use, ' + lasting);
 }
 
 function pieceLine(label, names) {
@@ -449,36 +472,36 @@ function pieceLine(label, names) {
   return X.el('div', { class: 'bm-list' }, X.el('span', { class: 'bm-list-label' }, label), X.el('ul', {}, items));
 }
 
-const CARD_TREE_NOTABLES = 8;
-
-// The planned tree's notables, the first few on the card; "Why these pieces" lists them all.
-function treeLine(idea) {
-  if (!idea.treeNotables || idea.treeNotables.length === 0) {
+// Names as icon pieces (public/buildicons.js): each shows its picture, and its name in the pop-up.
+function namedPieces(names) {
+  if (!names) {
     return null;
   }
-  const items = [];
-  for (const name of idea.treeNotables.slice(0, CARD_TREE_NOTABLES)) {
-    items.push(X.el('li', {}, name));
+  const pieces = [];
+  for (const name of names) {
+    pieces.push({ name });
   }
-  const hidden = idea.treeNotables.length - CARD_TREE_NOTABLES;
-  if (hidden > 0) {
-    items.push(X.el('li', { class: 'muted' }, '+' + hidden + ' more'));
-  }
-  return X.el('div', { class: 'bm-list', title: 'Notables on the planned passive tree (' + idea.treePoints + ' points)' },
-    X.el('span', { class: 'bm-list-label' }, 'Tree'), X.el('ul', {}, items));
+  return pieces;
 }
 
-// The planned tree's masteries, each with the option the planner chose.
+// A support's picture is found by its full name; the pop-up drops the word "Support".
+function supportPieces(supports) {
+  const pieces = [];
+  for (const name of supports ?? []) {
+    pieces.push({ name, label: name.replace(/ Support$/, '') });
+  }
+  return pieces;
+}
+
+// The planned tree's notables, all of them: as icons they take a line or two.
+function treeLine(idea) {
+  return iconLine(X, 'Tree', namedPieces(idea.treeNotables),
+    { kind: 'passive', title: 'Notables on the planned passive tree (' + idea.treePoints + ' points)' });
+}
+
+// The planned tree's masteries: each icon's pop-up says the option the planner chose.
 function masteryLine(idea) {
-  if (!idea.treeMasteries || idea.treeMasteries.length === 0) {
-    return null;
-  }
-  const items = [];
-  for (const line of idea.treeMasteries) {
-    items.push(X.el('li', {}, line));
-  }
-  return X.el('div', { class: 'bm-list', title: 'Masteries on the planned passive tree, with the chosen option' },
-    X.el('span', { class: 'bm-list-label' }, 'Masteries'), X.el('ul', {}, items));
+  return iconLine(X, 'Masteries', namedPieces(idea.treeMasteries), { kind: 'passive' });
 }
 
 function toggleOpen(key) {

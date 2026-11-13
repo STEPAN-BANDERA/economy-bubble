@@ -479,6 +479,11 @@ STATEMENTS = [
      [more("damage", ["spell"], value=35, condition="unreservedMana", subject="supported"), flag("scalesWithMana", subject="supported")]),
     (r"^Supported Skills gain Added (?:Lightning|Cold) Damage equal to " + NUMBER + r"% of Reserved Maximum Mana$",
      [more("damage", ["spell"], value=35, subject="supported"), flag("scalesWithMana", subject="supported")]),
+    # Its cost line: each use costs a share of the unreserved mana on top of the skill's own base cost, which the
+    # supports' multipliers then raise; the generator's mana upkeep adds it. It was read as minor until 2026-11-13,
+    # so Archmage looked free to cast. Another form of the line (reserved mana) stays minor.
+    (r"^Supported Skills gain Base Mana Cost equal to " + NUMBER + r"% of Unreserved Maximum Mana$",
+     [flat("costPerUnreservedMana", subject="supported")]),
     (r"^Supported Skills gain Base Mana Cost equal to", [minor()]),
     (r"^\+?" + NUMBER + r"% to Quality of Supported Skill Gems$", [minor()]),
     (r"^Supported Attacks will Trigger a Supported Spell when you Crit an Enemy$", [flag("castOnCrit", subject="supported")]),

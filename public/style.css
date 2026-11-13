@@ -805,6 +805,19 @@ ol.luggage { margin: 6px 0 10px; padding-left: 22px; line-height: 1.6; }
 .bm-list-label { color: var(--ink-2); font-size: 12px; }
 .bm-list ul { display: flex; flex-wrap: wrap; gap: 2px 12px; list-style: none; margin: 0; padding: 0; }
 .bm-aura-count { grid-column: 2; font-size: 12px; }
+/* Build cards: each piece as a small in-game picture (public/buildicons.js), its name in a pop-up. 26px is ICON_SIZE there. */
+.bm-icon-list { align-items: center; }
+.bm-icon-list ul { gap: 4px; align-items: center; }
+.bm-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-sizing: border-box; padding: 0;
+  border: 1px solid var(--line); border-radius: 3px; background: #0b0809; cursor: help; overflow: hidden; outline: none; }
+.bm-icon-round { border-radius: 50%; }
+.bm-icon:hover, .bm-icon:focus-visible { border-color: var(--focus); background: #2a1d10; }
+.bm-icon img { display: block; max-width: 26px; max-height: 26px; object-fit: contain; }
+.bm-icon-sprite { display: block; width: 26px; height: 26px; flex: 0 0 auto; background-repeat: no-repeat; }
+.bm-icon-text { margin: 0 8px 0 2px; }
+.bm-tip { position: fixed; z-index: 60; max-width: min(320px, calc(100vw - 16px)); padding: 4px 8px; border: 1px solid var(--frame-hi); border-radius: 3px;
+  background: #0b0809; color: var(--ink); font-size: 12px; line-height: 1.35; pointer-events: none; box-shadow: 0 4px 16px #000c; }
+.bm-tip[hidden] { display: none; }
 .bm-link-out { font-size: 13px; color: var(--frame-hi); justify-self: start; }
 .bm-more { margin-top: 12px; }
 .bm-wheel { margin: 0 0 18px; padding: 12px; border: 1px solid var(--frame); border-radius: 4px; background: var(--panel); }
@@ -875,6 +888,8 @@ ol.luggage { margin: 6px 0 10px; padding-left: 22px; line-height: 1.6; }
 .bm-planner-stage input[type="range"] { width: 100%; accent-color: var(--frame-hi); }
 .bm-planner-weight { color: var(--ink-2); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .bm-planner-start { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.bm-planner-workers { display: inline-flex; align-items: center; gap: 4px; }
+.bm-planner-workers input { width: 4.5em; }
 .bm-planner-tags { font-size: 12px; margin: 6px 0 0; }
 
 /* Solved rare gear on a build card (public/buildideas.js, gearSection). */

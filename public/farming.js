@@ -60,10 +60,9 @@ export const PAST_LEAGUES = [
 
 // 3.30 (Covens of Umbra) removes scarabs from the game and adds Threads in their place, one type per primary league
 // mechanic, up to eight per map (GGG's 3.30.0 patch notes, Endgame Changes). Each card keeps its 3.29 scarab loadout
-// for replays of older leagues and lists its Threads beside it. Prepared before launch, so it stays off until then:
-// on launch day set THREADS_ARE_LIVE to true and, if GGG's league name differs, correct SCARABS_REMOVED_IN_LEAGUE
-// (it must match the name the league gets in PAST_LEAGUES once it ends).
-export const THREADS_ARE_LIVE = false;
+// for replays of older leagues and lists its Threads beside it. Live since 3.30's launch (turned on 2026-11-14);
+// SCARABS_REMOVED_IN_LEAGUE must match the name the league gets in PAST_LEAGUES once it ends.
+export const THREADS_ARE_LIVE = true;
 export const SCARABS_REMOVED_IN_LEAGUE = 'Covens of Umbra';
 const THREADS_ROUGH_NUMBERS = 'Scarabs are gone since 3.30: the Threads here stand in for them at 8 per map, the most that count, before any free Threads a Shaped Region gives. The yields were gathered with 3.29 scarab loadouts and the 3.29 Atlas tree, and nobody has measured them with Threads yet.';
 

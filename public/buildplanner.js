@@ -14,7 +14,9 @@ import { MIN_LIMITS, LIMIT_IDS, DAMAGE_TYPES, WEAPONS, WEAPON_TYPES, PLAYSTYLES,
 import { sharedIndex, ideaCard, ideaPlan, chooseIdeaPlan } from './buildideas.js';
 import { GEAR_LEVELS, DEFAULT_GEAR_LEVEL } from './buildgear.js';
 
-const MAX_WORKERS = 6;
+// Workers: any number from 1 to the browser's threads (the hard cap), 60% of them by default so the rest of the
+// machine stays usable.
+const DEFAULT_WORKER_SHARE_OF_THREADS = 0.6;
 const REDRAW_MILLISECONDS = 300; // progress redraws at most this often: hundreds of quick results arrive a second
 const TOLERANCE_CHOICES = [0, 0.02, 0.05, 0.1, 0.2];
 const WEIGHT_STEP = 0.05;
@@ -25,7 +27,7 @@ let X; // helpers from buildmaker.js
 const P = {
   status: 'idle', // idle -> loading -> ready | failed
   index: null,
-  limits: null, wide: false, weights: null, tolerance: null, gearLevel: null,
+  limits: null, wide: false, weights: null, tolerance: null, gearLevel: null, workerLimit: null,
   job: null,
   workers: [],
   redrawTimer: null,
@@ -52,10 +54,12 @@ function loadChoices() {
   }
   P.tolerance = TOLERANCE_CHOICES.includes(saved.tolerance) ? saved.tolerance : DEFAULT_TOLERANCE;
   P.gearLevel = GEAR_LEVELS[saved.gearLevel] ? saved.gearLevel : DEFAULT_GEAR_LEVEL;
+  P.workerLimit = isAllowedWorkerCount(saved.workerLimit) ? saved.workerLimit : null;
 }
 
 function saveChoices() {
-  X.store.set('buildPlanner', { limits: P.limits, wide: P.wide, weights: P.weights, tolerance: P.tolerance, gearLevel: P.gearLevel });
+  X.store.set('buildPlanner', { limits: P.limits, wide: P.wide, weights: P.weights, tolerance: P.tolerance, gearLevel: P.gearLevel,
+    workerLimit: P.workerLimit });
 }
 
 function setLimit(id, value) {
@@ -208,7 +212,28 @@ function startSection() {
   }
   const startButton = X.el('button', { type: 'button', class: 'primary', disabled: !enough || size.pairs === 0 || running, onclick: () => startJob(size) }, 'Plan builds');
   const stopButton = running ? X.el('button', { type: 'button', class: 'ghost', onclick: stopJob }, 'Stop') : null;
-  return X.el('div', { class: 'bm-planner-start' }, startButton, stopButton, X.el('span', { class: 'muted' }, ' ', note));
+  return X.el('div', { class: 'bm-planner-start' }, startButton, stopButton, workerChoice(running), X.el('span', { class: 'muted' }, ' ', note));
+}
+
+// How many workers plan at once: 1 to the browser's threads, 60% of them unless chosen. Takes effect on the next run.
+function workerChoice(running) {
+  const threads = availableThreadCount();
+  return X.el('label', { class: 'bm-planner-workers', title: 'Planning threads, 1 to ' + threads + ' (this device’s threads). The default, ' + defaultWorkerCount() + ', leaves the rest of the machine free.' },
+    'Workers ',
+    X.el('input', { type: 'number', min: '1', max: String(threads), step: '1', value: String(workerCount()), disabled: running,
+      'aria-label': 'Workers', onchange: event => setWorkerLimit(event.target.value) }),
+    X.el('span', { class: 'muted' }, ' of ' + threads));
+}
+
+function setWorkerLimit(value) {
+  const count = Math.round(Number(value));
+  if (count === defaultWorkerCount() || !isAllowedWorkerCount(count)) {
+    P.workerLimit = null;
+  } else {
+    P.workerLimit = count;
+  }
+  saveChoices();
+  X.rerender();
 }
 
 function resultsSection() {
@@ -351,9 +376,28 @@ function tagsBlock(card) {
 }
 
 // ---------- running a search ----------
+function availableThreadCount() {
+  if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
+    return navigator.hardwareConcurrency;
+  }
+  return 2;
+}
+
+function defaultWorkerCount() {
+  const share = Math.floor(availableThreadCount() * DEFAULT_WORKER_SHARE_OF_THREADS);
+  return Math.max(1, share);
+}
+
+function isAllowedWorkerCount(count) {
+  return Number.isInteger(count) && count >= 1 && count <= availableThreadCount();
+}
+
+// The chosen count, or the default when none is chosen (or the saved one is more than this device has).
 function workerCount() {
-  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
-  return Math.max(1, Math.min(MAX_WORKERS, cores - 1));
+  if (isAllowedWorkerCount(P.workerLimit)) {
+    return P.workerLimit;
+  }
+  return defaultWorkerCount();
 }
 
 function ensureWorkers(count) {

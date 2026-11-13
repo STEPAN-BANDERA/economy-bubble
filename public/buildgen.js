@@ -17,6 +17,16 @@ const ENEMY_CHAOS_RESISTANCE = 25;
 const BASE_CRIT_MULTIPLIER = 150;
 const ATTACK_WEAPON_BASE_CRIT = 6; // a typical endgame weapon base
 const MINION_BASE_CRIT = 5;
+// Accuracy: an attack lands with chance 1.25 x accuracy / (accuracy + the enemy's evasion term), between 5% and 100%
+// (the same formula MONSTER_ACCURACY uses against your evasion). The player's report: 3,500 to 4,000 accuracy is
+// usually enough to hit an endgame boss every time, so the term is a quarter of 3,750 (that much lands every hit).
+// Spells always land; so do minions (3.2x removed minion accuracy) and hits that can't be evaded (Resolute Technique).
+const FULL_HIT_ACCURACY = 3750;
+const ENEMY_EVASION_TERM = FULL_HIT_ACCURACY / 4;
+const MIN_HIT_CHANCE = 0.05;
+// A character's own accuracy: 2 a level (level 92) and 2 for each point of Dexterity.
+const CHARACTER_ACCURACY = 2 * 92;
+const ACCURACY_PER_DEXTERITY = 2;
 const STACKS_ASSUMED = 3; // "per Frenzy Charge", "per Endurance Charge": a build that cares keeps about three
 // Rage (3.2x patch notes): each Rage grants 1% more Attack Damage, up to 30, and "increased Rage Effect" scales that.
 // A build with a Rage source (a line flagged rageSource) hits often enough to sit near the cap in a fight, but starts
@@ -53,11 +63,13 @@ const MAX_TOTEMS = 6;
 // Auras, heralds and reserved self buffs reserve a share of mana (of life with Blood Magic), less by the build's
 // reservation efficiency: a skill reserves its base share times 100 / (100 + efficiency). The planned pieces' lines
 // count, and RESERVATION_EFFICIENCY_ASSUMED stands for what isn't planned (an Enlighten, cluster jewels, a corrupted
-// implicit; rare gear can't roll it). Our estimate: 10%, which with RESERVABLE_PERCENT keeps the 100% of base
-// reservation the budget allowed before efficiency was counted.
+// implicit; rare gear can't roll it). Our estimate: 10%.
 const RESERVATION_EFFICIENCY_ASSUMED = 10;
-// At most this much of the pool is reserved: the rest pays the main skill's costs (our estimate).
-const RESERVABLE_PERCENT = 90;
+// Mana can be reserved up to all of it: whether what is left pays for the main skill is the mana upkeep's question
+// (manaUpkeepOf), which the score answers. It was a fixed 90% until 2026-11-13, so builds stopped at whatever share the
+// last aura that fit left. Life keeps a margin: reserved life isn't there to take hits.
+const RESERVABLE_MANA_PERCENT = 100;
+const RESERVABLE_LIFE_PERCENT = 90;
 // What a class tree, planned before the buffs, takes them to reserve after efficiency: about an aura and a herald, or
 // two auras, at the endgame efficiency (our estimate).
 const RESERVATION_WHILE_BUFFS_PENDING = 60;
@@ -78,7 +90,11 @@ const MAX_CURSES = 1; // the curse limit without curse-limit gear or notables
 // 66% less curse effect, GGG's patch notes), but a cast curse isn't up every moment: it has to be cast again as targets
 // change and its duration runs out, where an aura is always on.
 const CURSE_EFFECT_ASSUMED = 0.9;
-const MAX_BUFFS = 4;
+// Buffs kept up beside the main skill: a curse, auras, heralds and defensive spells. What really limits them is the
+// sockets left (socketsForBuffs), the mana and life they reserve and whether each adds MIN_GAIN_TO_KEEP; this only
+// bounds the search. It was 4 until 2026-11-13, which with a curse and a guard spell left room for two auras, so
+// builds stopped short of reserving the mana their skill didn't need.
+const MAX_BUFFS = 6;
 // Flasks: five slots, one of them the life flask, so four utility flasks (fewer when unique flasks take slots).
 const UTILITY_FLASK_SLOTS = 4;
 // Our estimate of the flask charges an endgame character gains a second in a fight (hits, kills and the usual
@@ -112,12 +128,16 @@ const GEAR_INCREASED_SPEED = 10;
 const GEAR_DOT_MULTIPLIER = 10;
 const GEAR_INCREASED_CRIT = 100;
 const GEAR_CRIT_MULTIPLIER = 40;
-const TREE_ALLOWANCE = { increased: 190, speed: 20, dotMultiplier: 20, critIncreased: 100, critMultiplier: 40 };
+// Accuracy on unsolved rare gear: the weapon's own line and some on gloves, helmet and jewellery (our estimate).
+const GEAR_ACCURACY = 600;
+const TREE_ALLOWANCE = { increased: 190, speed: 20, dotMultiplier: 20, critIncreased: 100, critMultiplier: 40, accuracyIncreased: 30 };
 // With rare gear solved affix by affix (public/buildgear.js), the gear figures above shrink to what the solver
 // doesn't fill: the weapon's own modifiers on a spell or damage-over-time build, and for crit the power charges a
 // crit build keeps (about three, over 100% increased crit; nothing else models them) and the weapon's multiplier.
-// The crit part was 50% and +15 at first, which cost Assassin and Deadeye most of their calibration hits.
+// The crit part was 50% and +15 at first, which cost Assassin and Deadeye most of their calibration hits. The weapon
+// isn't solved, so its own accuracy line stays (our estimate).
 const SOLVED_GEAR_ALLOWANCE = { increased: 30, speed: 5, dotMultiplier: 5, critIncreased: 100, critMultiplier: 25 };
+const SOLVED_GEAR_WEAPON_ACCURACY = 300;
 // Every character ends the campaign at -60% to all resistances (fire, cold, lightning and chaos); gear makes it up.
 const CAMPAIGN_RESISTANCE_PENALTY = -60;
 // A level 20 active skill gem asks for about 155 of its attribute and a level 20 support about 111 (two-attribute gems
@@ -432,9 +452,33 @@ function eternalBlessingAura(skill, effects, support) {
     sockets: 2, ownAuraEffect: auraEffect, attributes: skill.attributes, supportAttributes: support.attributes || [], effects };
 }
 
+// Arrogance (its gem text): the supported skill reserves life instead of mana, at the support's reservation multiplier
+// (201% at level 20, poewiki's cost_multiplier), with increased aura effect. The usual use is an aura with a flat
+// reservation (Precision, Vitality, Clarity: a few hundred life) beside an Eternal Blessing aura, which allows only
+// life reservations next to it. It is offered as its own buff, like Eternal Blessing: the aura linked to the support,
+// two sockets.
+function arroganceAura(skill, effects, support) {
+  let auraEffect = 0;
+  for (const effect of support.effects) {
+    if (effect.stat === 'effect:aura' && effect.kind === 'increased') {
+      auraEffect += effect.value || 0;
+    }
+  }
+  const multiplier = (support.costMultiplier || 100) / 100;
+  return { name: skill.name + ' (Arrogance)', baseName: skill.name, kind: 'aura',
+    reservation: (skill.reservation || 0) * multiplier, reservationFlat: (skill.reservationFlat || 0) * multiplier,
+    reservesLife: true, sockets: 2, ownAuraEffect: auraEffect, attributes: skill.attributes,
+    supportAttributes: support.attributes || [], effects };
+}
+
+function skillReserves(skill) {
+  return skill.reservation > 0 || skill.reservationFlat > 0;
+}
+
 function buffsOf(skills, supports) {
   const buffs = [];
   const eternalBlessing = supports['Eternal Blessing Support'] || null;
+  const arrogance = supports['Arrogance Support'] || null;
   for (const skill of skills) {
     if (skill.main || skill.effects.length === 0) {
       continue;
@@ -442,12 +486,15 @@ function buffsOf(skills, supports) {
     const isAura = skill.tags.includes('aura');
     const isHerald = skill.tags.includes('herald');
     const isCurse = skill.tags.includes('curse');
-    if ((isAura || isHerald) && skill.reservation > 0) {
+    if ((isAura || isHerald) && skillReserves(skill)) {
       const effects = isAura ? withMinionCopies(skill.effects) : skill.effects;
-      buffs.push({ name: skill.name, kind: isAura ? 'aura' : 'herald', reservation: skill.reservation,
-        attributes: skill.attributes, effects });
+      buffs.push({ name: skill.name, kind: isAura ? 'aura' : 'herald', reservation: skill.reservation || 0,
+        reservationFlat: skill.reservationFlat || 0, attributes: skill.attributes, effects });
       if (isAura && eternalBlessing && blessingCanSupport(skill, eternalBlessing)) {
         buffs.push(eternalBlessingAura(skill, effects, eternalBlessing));
+      }
+      if (isAura && arrogance && blessingCanSupport(skill, arrogance)) {
+        buffs.push(arroganceAura(skill, effects, arrogance));
       }
       continue;
     }
@@ -1108,6 +1155,9 @@ function conditionUptime(condition, context, branch) {
     const unreserved = context.defence ? context.defence.unreservedMana : UNRESERVED_MANA_REFERENCE;
     return Math.min(UNRESERVED_MANA_FACTOR_MAX, unreserved / UNRESERVED_MANA_REFERENCE);
   }
+  if (condition === 'accuracyAboveLife') {
+    return accuracyAboveLifeUptime(context);
+  }
   if (condition === 'arcaneSurge' && context.tags.has('spell')) {
     return 0.7;
   }
@@ -1284,12 +1334,82 @@ function offenceOf(build, context, branch) {
   const resistanceFactor = resistanceFactorOf(context, resistanceDrop);
   const impaleFactor = hits ? impaleFactorOf(context, impale) : 1;
   const defenceBaseFactor = referenceBaseFromDefence > 0 ? Math.max(0.1, baseFromDefence / referenceBaseFromDefence) : 1;
+  const landedFactor = hits ? hitChanceOf(context) : 1;
   const value = baseRate(context) * (1 + increased / 100) * more * critFactor * hitFactor * dotFactor * levelFactor
-    * speedFactor * totemFactor * resistanceFactor * (1 + extra / 100) * impaleFactor * defenceBaseFactor;
+    * speedFactor * totemFactor * resistanceFactor * (1 + extra / 100) * impaleFactor * defenceBaseFactor * landedFactor;
   const sheetFactors = (1 + increased / 100) * more * critFactor * levelFactor * speedFactor * totemFactor * (1 + extra / 100)
     * impaleFactor;
   const dps = attackSheetDps(context, build.weapon, added, sheetFactors);
-  return { value: Math.max(value, 0.0001), critChance, dps };
+  // How much faster than its base the skill is used, which is also how much faster it spends mana: a damage-over-time
+  // skill's speed doesn't raise its damage, but each cast still costs.
+  const useSpeed = (1 + speedIncreased / 100) * speedMore;
+  return { value: Math.max(value, 0.0001), critChance, dps, useSpeed };
+}
+
+// ---------- accuracy ----------
+// Whether the skill's hits can miss: attacks of your own can, unless something makes them unevadable.
+function hitsCanMiss(context) {
+  if (!context.types.has('Attack') || context.isMinion) {
+    return false;
+  }
+  if (context.flags.has('neverMiss')) {
+    return false;
+  }
+  return true;
+}
+
+// The share of the skill's hits that land (0.05 to 1). The bare reference (bareOffence) has every hit land, the
+// skill's damage as listed, so a miss is a loss against it as it is beside a spell.
+function hitChanceOf(context) {
+  if (!hitsCanMiss(context) || context.everyHitLands) {
+    return 1;
+  }
+  const accuracy = context.accuracy ?? 0;
+  const chance = 1.25 * accuracy / (accuracy + ENEMY_EVASION_TERM);
+  return Math.min(1, Math.max(MIN_HIT_CHANCE, chance));
+}
+
+// The build's accuracy rating: the character's own (level and Dexterity), the gear's, and the accuracy lines of its
+// pieces that reach the skill, as flat x (1 + increased) x more.
+function accuracyOf(build, context) {
+  const allowance = build.tree ? null : TREE_ALLOWANCE;
+  let flat = CHARACTER_ACCURACY + ACCURACY_PER_DEXTERITY * attributeSupplyOf(build).dex;
+  if (build.gear) {
+    flat += SOLVED_GEAR_WEAPON_ACCURACY;
+  } else {
+    flat += GEAR_ACCURACY;
+  }
+  let increased = allowance ? allowance.accuracyIncreased : 0;
+  let more = 1;
+  for (const piece of piecesOf(build)) {
+    for (const effect of piece.effects) {
+      if (effect.stat !== 'accuracy') {
+        continue;
+      }
+      const weight = effectWeight(effect, context, NO_CRIT_BRANCH);
+      if (weight === 0) {
+        continue;
+      }
+      const value = (effect.value || 0) * weight;
+      if (effect.kind === 'flat') {
+        flat += value;
+      } else if (effect.kind === 'increased') {
+        increased += value;
+      } else if (effect.kind === 'more') {
+        more *= 1 + value / 100;
+      }
+    }
+  }
+  return Math.max(0, flat * (1 + increased / 100) * more);
+}
+
+// Precise Technique's "if Accuracy Rating is higher than Maximum Life": holds or not once both are known; before
+// that (the planner's first look at a piece) it counts as an ordinary condition.
+function accuracyAboveLifeUptime(context) {
+  if (context.accuracy === undefined || !context.defence) {
+    return CONDITION_UPTIME.other;
+  }
+  return context.accuracy > context.defence.life ? 1 : 0;
 }
 
 // What Impale adds to the hits, as a factor: each hit also deals the stored share of every Impale on the enemy. The
@@ -1371,15 +1491,16 @@ function bestOffence(build, context) {
   if (context.flags.has('neverCrit') || context.flags.has('noCritDamage')) {
     const plain = offenceOf(build, context, { crit: false, critChance: 0.1 });
     const elementalOverloadProbe = offenceOf(build, context, { crit: false, critChance: plain.critChance });
-    return { value: elementalOverloadProbe.value, crit: false, critChance: plain.critChance, dps: elementalOverloadProbe.dps };
+    return { value: elementalOverloadProbe.value, crit: false, critChance: plain.critChance, dps: elementalOverloadProbe.dps,
+      useSpeed: elementalOverloadProbe.useSpeed };
   }
   const probe = offenceOf(build, context, { crit: true, critChance: 0.3 });
   const crit = offenceOf(build, context, { crit: true, critChance: probe.critChance });
   const plain = offenceOf(build, context, { crit: false, critChance: probe.critChance });
   if (crit.value > plain.value) {
-    return { value: crit.value, crit: true, critChance: crit.critChance, dps: crit.dps };
+    return { value: crit.value, crit: true, critChance: crit.critChance, dps: crit.dps, useSpeed: crit.useSpeed };
   }
-  return { value: plain.value, crit: false, critChance: plain.critChance, dps: plain.dps };
+  return { value: plain.value, crit: false, critChance: plain.critChance, dps: plain.dps, useSpeed: plain.useSpeed };
 }
 
 // ---------- defence: effective hit points ----------
@@ -1410,6 +1531,42 @@ const SHIELD_BLOCK = 25; // a shield's own chance to block
 const CHARACTER_MANA = 34 + 6 * 92;
 const MANA_PER_INTELLIGENCE = 0.5;
 const GEAR_MANA = 150;
+// ---------- mana upkeep: paying for the main skill ----------
+// Each use of the main skill costs its gem's level-20 cost times each linked support's cost multiplier, more or less
+// by the build's cost lines and divided by its cost efficiency (cost x 100 / (100 + efficiency), GGG's 3.26 notes).
+// Over a fight the build regains mana from regeneration, mana leech, mana on hit and mana on kill; what it can't
+// pay for, it can't cast. So a build may reserve nearly all its mana when the rest pays for its skill, and the
+// pieces that lower the cost or raise the upkeep (cost efficiency, less cost, mana regeneration, cost paid with life,
+// leech of the right damage type, mana on hit) earn their place by the casting they keep going.
+// Every character regenerates 1.75% of maximum mana per second (the game's base rate, as poewiki gives it).
+const BASE_MANA_REGEN_PERCENT = 1.75;
+// Leech recovers at most 20% of maximum mana per second (the game's cap); each 1% leeched is taken to recover
+// LEECH_RATE_PER_PERCENT of the pool per second while hitting, as for life.
+const MAX_MANA_LEECH_RATE = 20;
+// Enemies killed per second while the mana matters: many while mapping, none while a boss stands (our estimate).
+const MANA_KILLS_PER_SECOND = 0.5;
+// The fight the upkeep is measured over: unreserved mana carries the first casts, regained mana the rest. A long
+// boss phase (our estimate): a short one would let any big pool pass, a very long one would ignore the pool.
+const UPKEEP_WINDOW_SECONDS = 20;
+// Skills paid for on placement, not on every hit (our estimates): totems are put down every few seconds and their
+// skill costs nothing; brands are cast again as they expire or move to a new target.
+const TOTEM_PLACEMENTS_PER_SECOND = 0.2;
+const BRAND_CASTS_PER_SECOND = 0.5;
+const DEFAULT_CAST_TIME = 0.75;
+// A skill paid with life (Lifetap, Blood Magic, Transfusion) spends at most this share of life before what comes back
+// has to keep up: life spent on casting isn't there to take the next hit (our estimate).
+const LIFE_COST_BUFFER_SHARE = 0.25;
+const DEFAULT_ATTACKS_PER_SECOND = 1.5; // a weapon the data has no base for
+// With the fixed gear figures, rare gear's increased mana regeneration: an amulet and two rings with a regeneration
+// roll each (our estimate). Solved gear brings its own lines instead.
+const GEAR_MANA_REGEN_INCREASED = 80;
+// Without a planned tree, its increased mana regeneration: a few regeneration nodes on the way (our estimate, like
+// TREE_ALLOWANCE). A planned tree brings its own nodes instead.
+const TREE_MANA_REGEN_INCREASED = 60;
+// A build that can't pay for one use from what isn't reserved can't use its skill: its damage counts at this share,
+// which is nothing to the score but still orders such builds for the search.
+const UNPAYABLE_SHARE = 0.01;
+
 // Lines that grow with unreserved mana (Archmage) are read at this much unreserved mana and scaled by the build's own.
 const UNRESERVED_MANA_REFERENCE = 1000;
 // No more than this many times the reference: a mana-stacked Archmage build reaches about 8000 unreserved mana.
@@ -1740,9 +1897,10 @@ function effectiveHp(totals, flags, context, weapon, reservation, gear) {
   // Blood Magic removes mana. Reserved life (Blood Magic's buffs, Petrified Blood) isn't there to take hits.
   const mana = flags.has('bloodMagic') ? 0 : scaled(totals.mana, reservation.baseMana + (gear.pool === 'solved' ? 0 : GEAR_MANA)) + stackedExtra(reservation, 'mana');
   const maximumLife = life;
-  life *= Math.max(0.1, 1 - reservation.life / 100);
+  const lifeFlatShare = maximumLife > 0 ? (reservation.lifeFlat || 0) / maximumLife * 100 : 0;
+  life *= Math.max(0.1, 1 - (reservation.life + lifeFlatShare) / 100);
   life = petrifiedBloodLife(life, maximumLife, flags);
-  const unreservedMana = mana * Math.max(0, 1 - reservation.mana / 100);
+  const unreservedMana = Math.max(0, mana * (1 - reservation.mana / 100) - (reservation.manaFlat || 0));
   let energyShield = scaled(totals.energyShield, esGear) + stackedExtra(reservation, 'energyShield');
   // Life converted to energy shield leaves life; life "as extra" energy shield keeps it.
   const converted = life * Math.min(100, totals.lifeConvertedToEnergyShield) / 100;
@@ -1782,7 +1940,8 @@ function effectiveHp(totals, flags, context, weapon, reservation, gear) {
   const lifeFlask = lifeFlaskBase && !flags.has('chaosInoculation') && !flags.has('vaalPact')
     ? lifeFlaskBase.life / lifeFlaskBase.duration * (1 + totals.flaskRecovery / 100)
     : 0;
-  const recoveryPerSecond = lifeRegen + life * leechRate / 100 + (hitsEnemies ? totals.onHit * HITS_PER_SECOND : 0)
+  const lifeSustain = lifeRegen + life * leechRate / 100 + (hitsEnemies ? totals.onHit * HITS_PER_SECOND : 0);
+  const recoveryPerSecond = lifeSustain
     + lifeFlask + esRechargePerSecond(totals, flags, energyShield, life)
     + (flags.has('noEsRecharge') ? 0 : energyShield * totals.esRegenPercent / 100 + totals.esRegenFlat);
   // A self-burn (Righteous Fire) comes out of the recovery; burning faster than it recovers drains the pool, though
@@ -1798,7 +1957,7 @@ function effectiveHp(totals, flags, context, weapon, reservation, gear) {
   // same life floor) and what comes back in a second.
   const maxHit = standingPool / taken * readiness;
   return { ehp: pool / (taken * Math.max(0.1, 1 - recoup)) * readiness, pool: standingPool, life, energyShield,
-    armour, evasion, overcappedFire: totals.overcappedFire, maxHit, recovery: netRecovery, mana, unreservedMana };
+    armour, evasion, overcappedFire: totals.overcappedFire, maxHit, recovery: netRecovery, lifeSustain, mana, unreservedMana };
 }
 
 // The assumed extra of a committed stat while the build's gear isn't solved yet (STACKING_EXTRA).
@@ -1857,7 +2016,7 @@ function bestEffectiveHp(build, context) {
       reserved.mana += build.pendingReservation;
     }
   }
-  const reservation = { mana: reserved.mana, life: reserved.life,
+  const reservation = { mana: reserved.mana, life: reserved.life, manaFlat: reserved.manaFlat, lifeFlat: reserved.lifeFlat,
     baseMana: CHARACTER_MANA + attributeSupplyOf(build).int * MANA_PER_INTELLIGENCE,
     stacking: build.stacking && build.stackingPending ? { stat: build.stacking, amount: STACKING_EXTRA[build.stacking] || 0 } : null };
   let best = null;
@@ -1886,7 +2045,147 @@ function defenceOf(build, context) {
   const best = bestEffectiveHp(build, context);
   return { index: best.ehp / referenceHp(), ehp: best.ehp, pool: best.pool, life: best.life, energyShield: best.energyShield,
     armour: best.armour, evasion: best.evasion, overcappedFire: best.overcappedFire, maxHit: best.maxHit, recovery: best.recovery,
-    mana: best.mana, unreservedMana: best.unreservedMana };
+    lifeSustain: best.lifeSustain, mana: best.mana, unreservedMana: best.unreservedMana };
+}
+
+// ---------- mana upkeep ----------
+const NO_CRIT_BRANCH = { crit: false, critChance: 0 };
+
+// What paying for the main skill comes to (see UPKEEP_WINDOW_SECONDS): its cost per use and what it is paid with,
+// uses per second, what it spends and regains per second, and share, the part of a fight it can keep using it (1 when
+// it pays for itself, less when its mana runs out, UNPAYABLE_SHARE when one use costs more than isn't reserved).
+function manaUpkeepOf(build, context, defenceResult, useSpeed) {
+  const cost = build.skill.cost;
+  const usesPerSecond = usesPerSecondOf(build, context, useSpeed);
+  // upkeepWaived: the build is scored as if its skill cost nothing (finalizeTree, choosing the buffs to balance for).
+  if (!cost || !(cost.amount > 0) || usesPerSecond === 0 || build.upkeepWaived) {
+    return { costPerUse: 0, paidWith: null, usesPerSecond, spentPerSecond: 0, regainedPerSecond: 0, share: 1 };
+  }
+  const lines = upkeepLinesOf(build, context);
+  let multiplier = 1;
+  for (const entry of linkedSupports(build)) {
+    multiplier *= (entry.support.costMultiplier || 100) / 100;
+  }
+  // Archmage adds a share of the unreserved mana to the base cost, before the multipliers.
+  const baseCost = cost.amount + defenceResult.unreservedMana * lines.costPerUnreservedMana / 100;
+  const costPerUse = Math.max(0, baseCost * multiplier * (1 + lines.costIncreased / 100) * lines.costMore
+    * 100 / Math.max(10, 100 + lines.costEfficiency));
+  const paidWithLife = cost.type === 'life' || context.flags.has('costLife') || context.flags.has('bloodMagic');
+  const spentPerSecond = costPerUse * usesPerSecond;
+  let pool;
+  let regainedPerSecond;
+  if (paidWithLife) {
+    // Life pays: a share of what isn't reserved carries the first uses (LIFE_COST_BUFFER_SHARE), then what life comes
+    // back all fight long (regeneration, leech, life on hit; not the life flask or energy shield recharge, which
+    // don't last a fight).
+    pool = defenceResult.life * LIFE_COST_BUFFER_SHARE;
+    regainedPerSecond = Math.max(0, defenceResult.lifeSustain);
+  } else {
+    pool = defenceResult.unreservedMana;
+    regainedPerSecond = manaRegainedPerSecond(build, context, defenceResult.mana, usesPerSecond, lines);
+  }
+  let share = Math.min(1, (pool + regainedPerSecond * UPKEEP_WINDOW_SECONDS) / Math.max(1e-9, spentPerSecond * UPKEEP_WINDOW_SECONDS));
+  if (pool < costPerUse) {
+    share = Math.min(share, UNPAYABLE_SHARE);
+  }
+  return { costPerUse, paidWith: paidWithLife ? 'life' : 'mana', usesPerSecond, spentPerSecond, regainedPerSecond, share };
+}
+
+// How often the main skill is paid for: attacks and casts at their rate times the build's speed, totems as they are
+// placed and brands as they are cast again; a minion skill is paid for once, when its minions are summoned.
+function usesPerSecondOf(build, context, useSpeed) {
+  if (context.isMinion) {
+    return 0;
+  }
+  if (context.tags.has('totem')) {
+    return TOTEM_PLACEMENTS_PER_SECOND;
+  }
+  if (context.types.has('Brand')) {
+    return BRAND_CASTS_PER_SECOND;
+  }
+  const speed = useSpeed > 0 ? useSpeed : 1;
+  if (context.types.has('Attack')) {
+    const base = weaponBases && weaponBases[build.weapon];
+    const weaponRate = base ? base.attackSpeed * (1 + RARE_WEAPON_ATTACK_SPEED / 100) : DEFAULT_ATTACKS_PER_SECOND;
+    return weaponRate * (build.skill.attackSpeedMultiplier || 100) / 100 * speed;
+  }
+  const castTime = build.skill.castTime > 0 ? build.skill.castTime : DEFAULT_CAST_TIME;
+  return speed / castTime;
+}
+
+// The build's lines about costs and mana recovery, each counted as far as it reaches the skill (a line about attack
+// costs doesn't lower a spell's, "Physical Attack Damage Leeched as Mana" leeches from the physical share only).
+function upkeepLinesOf(build, context) {
+  const lines = { costIncreased: 0, costMore: 1, costEfficiency: 0, costPerUnreservedMana: 0, regenIncreased: 0,
+    regenPercent: 0, regenFlat: 0, leech: 0, onHit: 0, onKill: 0, onKillPercent: 0 };
+  // Without solved gear or a planned tree, their usual mana regeneration stands in (as their other fixed figures do).
+  if (!build.gear) {
+    lines.regenIncreased += GEAR_MANA_REGEN_INCREASED;
+  }
+  if (!build.tree) {
+    lines.regenIncreased += TREE_MANA_REGEN_INCREASED;
+  }
+  for (const piece of piecesOf(build)) {
+    for (const effect of piece.effects) {
+      if (!UPKEEP_STATS.has(effect.stat)) {
+        continue;
+      }
+      const weight = effectWeight(effect, context, NO_CRIT_BRANCH);
+      if (weight === 0) {
+        continue;
+      }
+      addUpkeepLine(lines, effect, (effect.value || 0) * weight);
+    }
+  }
+  return lines;
+}
+
+const UPKEEP_STATS = new Set(['cost', 'costEfficiency', 'costPerUnreservedMana', 'manaRegen', 'manaRegenFlat', 'manaLeech', 'manaOnHit', 'manaOnKill', 'manaOnKillPercent']);
+
+function addUpkeepLine(lines, effect, amount) {
+  if (effect.stat === 'cost') {
+    if (effect.kind === 'increased') {
+      lines.costIncreased += amount;
+    } else if (effect.kind === 'more') {
+      lines.costMore *= Math.max(0, 1 + amount / 100);
+    }
+  } else if (effect.stat === 'costEfficiency' && effect.kind === 'increased') {
+    lines.costEfficiency += amount;
+  } else if (effect.stat === 'costPerUnreservedMana') {
+    lines.costPerUnreservedMana += amount;
+  } else if (effect.stat === 'manaRegen') {
+    if (effect.kind === 'increased') {
+      lines.regenIncreased += amount;
+    } else if (effect.kind === 'flat') {
+      lines.regenPercent += amount;
+    }
+  } else if (effect.stat === 'manaRegenFlat') {
+    lines.regenFlat += amount;
+  } else if (effect.stat === 'manaLeech') {
+    lines.leech += amount;
+  } else if (effect.stat === 'manaOnHit') {
+    lines.onHit += amount;
+  } else if (effect.stat === 'manaOnKill') {
+    lines.onKill += amount;
+  } else if (effect.stat === 'manaOnKillPercent') {
+    lines.onKillPercent += amount;
+  }
+}
+
+// Mana regained per second: regeneration of the whole pool (reserved mana regenerates too), leech and mana on hit
+// while the skill hits, and mana on kill.
+function manaRegainedPerSecond(build, context, maximumMana, usesPerSecond, lines) {
+  let regeneration = 0;
+  if (!context.flags.has('noManaRegen')) {
+    regeneration = maximumMana * (BASE_MANA_REGEN_PERCENT + lines.regenPercent) / 100
+      * Math.max(0, 1 + lines.regenIncreased / 100) + lines.regenFlat;
+  }
+  const hits = !(context.isDamageOverTime && !context.types.has('Damage'));
+  const leechRate = hits ? Math.min(MAX_MANA_LEECH_RATE, lines.leech * LEECH_RATE_PER_PERCENT) : 0;
+  const leech = maximumMana * leechRate / 100;
+  const onHit = hits ? lines.onHit * usesPerSecond : 0;
+  const onKill = (lines.onKill + maximumMana * lines.onKillPercent / 100) * MANA_KILLS_PER_SECOND;
+  return regeneration + leech + onHit + onKill;
 }
 
 // ---------- reservation ----------
@@ -1914,22 +2213,40 @@ function reservationEfficiencyFor(build, buff) {
   return Math.max(RESERVATION_EFFICIENCY_FLOOR, efficiency);
 }
 
-// The shares of mana and of life these buffs reserve, after efficiency.
+// What these buffs reserve, after efficiency: shares of mana and of life (mana, life, in percent) and flat amounts
+// (manaFlat, lifeFlat).
 function reservedPercentOf(build, buffs) {
-  const reserved = { mana: 0, life: 0 };
+  const reserved = { mana: 0, life: 0, manaFlat: 0, lifeFlat: 0 };
   const bloodMagic = hasBloodMagic(build);
   for (const buff of buffs) {
-    if (!buff.reservation) {
+    if (!buffReserves(buff)) {
       continue;
     }
-    const share = buff.reservation * 100 / (100 + reservationEfficiencyFor(build, buff));
+    const efficiencyScale = 100 / (100 + reservationEfficiencyFor(build, buff));
+    const share = (buff.reservation || 0) * efficiencyScale;
+    const flat = (buff.reservationFlat || 0) * efficiencyScale;
     if (buff.reservesLife || bloodMagic) {
       reserved.life += share;
+      reserved.lifeFlat += flat;
     } else {
       reserved.mana += share;
+      reserved.manaFlat += flat;
     }
   }
   return reserved;
+}
+
+function buffReserves(buff) {
+  return buff.reservation > 0 || buff.reservationFlat > 0;
+}
+
+// The reservable limits' check. Flat reservations (Clarity, Vitality, Precision reserve an amount, not a share) count
+// as a share of a bare character's pool: its life (REFERENCE_DEFENCE) and its mana with gear. The score itself takes
+// them from the build's own pools (effectiveHp).
+function reservationFits(reserved) {
+  const manaShare = reserved.mana + reserved.manaFlat / (CHARACTER_MANA + GEAR_MANA) * 100;
+  const lifeShare = reserved.life + reserved.lifeFlat / REFERENCE_DEFENCE.life * 100;
+  return manaShare <= RESERVABLE_MANA_PERCENT && lifeShare <= RESERVABLE_LIFE_PERCENT;
 }
 
 // ---------- utility: speed and item find ----------
@@ -2168,7 +2485,9 @@ function bareOffence(build) {
   }
   const bare = { skill: build.skill, ascendancy: NO_ASCENDANCY, weapon: build.weapon, ailment: build.ailment,
     supports: [], notables: [], keystones: [], uniques: [], buffs: [], flasks: [] };
-  const value = bestOffence(bare, contextOf(bare)).value;
+  const bareContext = contextOf(bare);
+  bareContext.everyHitLands = true;
+  const value = bestOffence(bare, bareContext).value;
   bareOffenceCache.set(key, value);
   return value;
 }
@@ -2181,7 +2500,14 @@ export function evaluateBuild(build) {
   context.defence = { life: defenceResult.life, energyShield: defenceResult.energyShield, armour: defenceResult.armour,
     evasion: defenceResult.evasion, overcappedFire: defenceResult.overcappedFire, mana: defenceResult.mana,
     unreservedMana: defenceResult.unreservedMana };
+  context.accuracy = accuracyOf(build, context);
   const offence = bestOffence(build, context);
+  // The skill is used only as often as the build can pay for it.
+  const upkeep = manaUpkeepOf(build, context, defenceResult, offence.useSpeed);
+  offence.value *= upkeep.share;
+  if (offence.dps) {
+    offence.dps *= upkeep.share;
+  }
   const scaling = offence.value / bareOffence(build);
   const defence = defenceResult.index;
   const clear = clearOf(build, context);
@@ -2192,9 +2518,9 @@ export function evaluateBuild(build) {
   const utility = utilityOf(build, context);
   return { score: problems.length > 0 ? 0 : score, offence: offence.value, scaling, defence, ehp: defenceResult.ehp, pool: defenceResult.pool, life: defenceResult.life, dps: offence.dps ?? null,
     energyShield: defenceResult.energyShield, clear, crit: offence.crit,
-    critChance: offence.critChance, problems, tags: [...context.tags].sort(), shares: context.shares,
+    critChance: offence.critChance, accuracy: context.accuracy, hitChance: hitChanceOf(context), problems, tags: [...context.tags].sort(), shares: context.shares,
     attributes, maxHit: defenceResult.maxHit, recovery: defenceResult.recovery,
-    mana: defenceResult.mana, unreservedMana: defenceResult.unreservedMana,
+    mana: defenceResult.mana, unreservedMana: defenceResult.unreservedMana, upkeep,
     movementSpeed: utility.movementSpeed, itemRarity: utility.itemRarity, itemQuantity: utility.itemQuantity };
 }
 
@@ -2438,7 +2764,8 @@ function flaskAllowed(build, flask) {
   return (build.flasks || []).length + uniqueFlasks < UTILITY_FLASK_SLOTS;
 }
 
-// Auras, heralds and reserved buffs that fit in RESERVABLE_PERCENT of the pool after efficiency, and one curse.
+// Auras, heralds and reserved buffs that fit in the pools after efficiency (RESERVABLE_MANA_PERCENT and
+// RESERVABLE_LIFE_PERCENT), and one curse.
 function buffAllowed(build, buff) {
   let curses = 0;
   for (const chosen of build.buffs) {
@@ -2446,7 +2773,7 @@ function buffAllowed(build, buff) {
       curses += 1;
     }
   }
-  // Each buff takes a socket, an Eternal Blessing aura two.
+  // Each buff takes a socket, an aura linked to Eternal Blessing or Arrogance two.
   let sockets = buff.sockets || 1;
   for (const chosen of build.buffs || []) {
     sockets += chosen.sockets || 1;
@@ -2460,11 +2787,10 @@ function buffAllowed(build, buff) {
   if (!blessingRulesHold(build, buff)) {
     return false;
   }
-  if (!buff.reservation) {
+  if (!buffReserves(buff)) {
     return true;
   }
-  const reserved = reservedPercentOf(build, [...build.buffs, buff]);
-  return reserved.mana <= RESERVABLE_PERCENT && reserved.life <= RESERVABLE_PERCENT;
+  return reservationFits(reservedPercentOf(build, [...build.buffs, buff]));
 }
 
 // Whether the composer would let this buff join the build (sockets, reservation, curse and Blessing rules).
@@ -2486,9 +2812,9 @@ function blessingRulesHold(build, buff) {
     if (blessingChosen) {
       return false;
     }
-    return chosen.every(other => !other.reservation || reservesLife(build, other));
+    return chosen.every(other => !buffReserves(other) || reservesLife(build, other));
   }
-  if (blessingChosen && buff.reservation > 0) {
+  if (blessingChosen && buffReserves(buff)) {
     return reservesLife(build, buff);
   }
   return true;
@@ -2733,6 +3059,7 @@ export function composeForAscendancy(skillPlan, ascendancy, index, options = {})
     // Its uniques are fixed by now, so the price penalty is the same for every support set: power decides.
     build = refineSupports(build, index, powerOf, skillPlan.seedSupports || []);
     build = betterWithSupportsFirst(build, index, scoreOf, powerOf, skillPlan.seedSupports || []);
+    build = rebalancedBuffs(build, index, scoreOf);
     const choice = scoreOf(build);
     if (best === null || choice > bestChoice) {
       best = build;
@@ -2793,15 +3120,23 @@ function addBestBuffs(build, index, scoreOf) {
   return scoreOf(withoutBlessing) > scoreOf(withBlessing) ? withoutBlessing : withBlessing;
 }
 
+// The buffs were chosen early, against a build without its uniques, gear and supports' final set: an Eternal Blessing
+// aura could win then and shut out the reserved auras that the finished build, paying for its skill, has mana for.
+// So they are chosen once more from nothing on the finished build, and the better set kept.
+function rebalancedBuffs(build, index, scoreOf) {
+  const trial = addBestBuffs({ ...build, buffs: [] }, index, scoreOf);
+  return scoreOf(trial) > scoreOf(build) ? trial : build;
+}
+
 // The buffs were chosen before the supports were refined, so a support that wants unreserved mana (Archmage) loses to
 // the auras already reserving it. The other order is tried too: the reserved buffs out, the supports refined with the
 // whole pool, then the buffs chosen again, and the better build kept.
 function betterWithSupportsFirst(build, index, scoreOf, powerOf, seedSupports) {
-  const reservedBuffs = build.buffs.filter(buff => buff.reservation > 0);
+  const reservedBuffs = build.buffs.filter(buff => buffReserves(buff));
   if (reservedBuffs.length === 0) {
     return build;
   }
-  let trial = { ...build, buffs: build.buffs.filter(buff => !buff.reservation) };
+  let trial = { ...build, buffs: build.buffs.filter(buff => !buffReserves(buff)) };
   trial = refineSupports(trial, index, powerOf, seedSupports);
   trial = addBestBuffs(trial, index, scoreOf);
   return scoreOf(trial) > scoreOf(build) ? trial : build;
@@ -2959,8 +3294,35 @@ export function finalizeTree(build, index, options = {}) {
     return build;
   }
   const withoutTree = { ...build, tree: null };
-  const tree = planTreeFor(withoutTree, build.ascendancy.baseClass, index, { ...treeOptionsOf(options), tryWithoutKeystones: true });
-  return { ...build, tree };
+  const treeOptions = { ...treeOptionsOf(options), tryWithoutKeystones: true };
+  const tree = planTreeFor(withoutTree, build.ascendancy.baseClass, index, treeOptions);
+  const planned = { ...build, tree };
+  const scoreOf = options.scoreOf || powerScore;
+  const replan = withBuffs => ({ ...withBuffs, tree: planTreeFor({ ...withBuffs, tree: null }, build.ascendancy.baseClass, index, treeOptions) });
+  let best = planned;
+  // The tree can lower the skill's cost or raise its mana upkeep, which leaves mana for another aura: the buffs are
+  // chosen again, and when they changed the tree is planned once more for them.
+  const rebalanced = rebalancedBuffs(planned, index, scoreOf);
+  if (rebalanced !== planned) {
+    best = betterOf(rebalanced, replan(rebalanced), scoreOf);
+  }
+  // Balancing the other way: the buffs the build would run if its skill cost nothing, with a tree planned for them,
+  // which then buys the cost efficiency and mana regeneration that pay for the skill beside them. An aura that
+  // starves the skill on its own can be worth it with the tree behind it.
+  const ambitious = addBestBuffs({ ...planned, buffs: [], upkeepWaived: true }, index, scoreOf);
+  if (!sameBuffs(ambitious.buffs, best.buffs)) {
+    best = betterOf(best, replan({ ...ambitious, upkeepWaived: false }), scoreOf);
+  }
+  return best;
+}
+
+function betterOf(first, second, scoreOf) {
+  return scoreOf(second) > scoreOf(first) ? second : first;
+}
+
+function sameBuffs(first, second) {
+  const names = buffs => buffs.map(buff => buff.name).sort().join('|');
+  return names(first || []) === names(second || []);
 }
 
 // Whether an effect can change this build's score at all: it reaches the skill, or it defends the character, or it
@@ -3042,6 +3404,7 @@ export function compactBuild(build, evaluation) {
     supports.push(entry.support.name);
   }
   const names = list => list.map(piece => piece.name);
+  const reserved = reservedPercentOf(build, build.buffs || []);
   const stored = {
     ascendancy: build.ascendancy.name, baseClass: build.ascendancy.baseClass, skill: build.skill.name,
     weapon: build.weapon, score: roundTo(evaluation.score, 3), scaling: roundTo(evaluation.scaling, 2),
@@ -3049,11 +3412,25 @@ export function compactBuild(build, evaluation) {
     supports, notables: names(build.notables), bloodline: bloodlineOf(build), keystones: names(build.keystones), uniques: names(build.uniques),
     buffs: names(build.buffs || []), flasks: names(build.flasks || []),
     // The shares of mana and of life its buffs reserve, after reservation efficiency.
-    reserved: roundTo(reservedPercentOf(build, build.buffs || []).mana, 1),
-    reservedLife: roundTo(reservedPercentOf(build, build.buffs || []).life, 1),
+    reserved: roundTo(reserved.mana, 1),
+    reservedLife: roundTo(reserved.life, 1),
   };
+  // And the flat amounts (Precision, Vitality, Clarity), when there are any.
+  if (reserved.manaFlat > 0) {
+    stored.reservedManaFlat = Math.round(reserved.manaFlat);
+  }
+  if (reserved.lifeFlat > 0) {
+    stored.reservedLifeFlat = Math.round(reserved.lifeFlat);
+  }
   if (build.gear) {
     stored.gear = compactGear(build.gear);
+  }
+  // Paying for the main skill (manaUpkeepOf): a use's cost and what pays it, mana spent and regained per second, and
+  // the share of a fight it keeps casting.
+  const upkeep = evaluation.upkeep;
+  if (upkeep && upkeep.costPerUse > 0) {
+    stored.upkeep = { cost: Math.round(upkeep.costPerUse), paidWith: upkeep.paidWith, spent: Math.round(upkeep.spentPerSecond),
+      regained: Math.round(upkeep.regainedPerSecond), share: roundTo(upkeep.share, 2) };
   }
   if (build.stacking) {
     stored.stacking = build.stacking;
@@ -3369,7 +3746,7 @@ const STAT_WORDS = {
   maxResistance: 'maximum resistances', totems: 'totems', minions: 'minions', projectiles: 'projectiles',
   chains: 'chains', pierce: 'pierces', lifeRegen: 'life regeneration', leech: 'leech', recoup: 'life recoup',
   physicalReduction: 'physical damage reduction', elementalReduction: 'elemental damage reduction',
-  gemLevel: 'gem levels', resistance: 'resistances', movementSpeed: 'movement speed', duration: 'skill duration',
+  gemLevel: 'gem levels', resistance: 'resistances', accuracy: 'accuracy rating', movementSpeed: 'movement speed', duration: 'skill duration',
 };
 
 function describeStat(stat) {
@@ -3385,6 +3762,7 @@ function describeStat(stat) {
 const CONDITION_WORDS = {
   perStack: 'per charge or stack', impale: 'when you impale', perEnduranceCharge: 'per endurance charge', fortificationAbove20: 'per Fortification above 20',
   recentKill: 'after a recent kill', onKill: 'on kill', recentCrit: 'after a recent crit',
+  accuracyAboveLife: 'while accuracy is higher than maximum life',
   onCrit: 'on critical strikes', nonCrit: 'with non-critical strikes', lowLife: 'on low life', fullLife: 'on full life',
   flask: 'during a flask', rareOrUnique: 'against rare and unique enemies', enemyShocked: 'against shocked enemies',
   enemyChilled: 'against chilled enemies', enemyIgnited: 'against ignited enemies', arcaneSurge: 'with Arcane Surge',
@@ -3402,7 +3780,7 @@ function describeCondition(condition) {
 
 const FLAG_WORDS = {
   elementalOverload: 'big elemental damage boost after any crit, but crits do no extra damage',
-  noCritDamage: 'critical strikes deal no extra damage', neverCrit: 'never crits, never misses',
+  noCritDamage: 'critical strikes deal no extra damage', neverCrit: 'never crits', neverMiss: 'attacks never miss',
   chaosInoculation: 'immune to chaos damage, life fixed at 1', mindOverMatter: 'part of the damage taken comes from mana',
   pureElement: 'only one element can deal damage', noSelfDamage: 'you deal no damage yourself; totems and minions do',
   battlemage: 'weapon damage adds to spells', scalesWithMana: 'damage grows with maximum mana',

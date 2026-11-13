@@ -183,7 +183,8 @@ data files. What differs on Windows, and how the code handles it:
   view.
 - The build planner ("Plan a build"): `public/buildtags.js` (tags on every piece), `public/buildstages.js` (the
   stages, their total and the agents' rounds), `public/buildsearch.js` (limits, quick pass, full plans; pure, runs
-  in Node), `public/build-worker.js` (runs it in Web Workers), `public/buildplanner.js` (draws the view).
+  in Node), `public/build-worker.js` (runs it in Web Workers), `public/buildplanner.js` (draws the view). Its
+  Workers box sets how many run at once, 1 to the device's threads, 60% of them by default; the choice is saved.
   `scripts/check_against_pob.py` checks our stat-line reading against Path of Building's (`npm run check:pob`).
 - `public/builds.js`: the engine of the "What people play" view (archetype traits, the questions, ranking, the spin
   wheel); `public/buildmaker.js` draws the tab. `npm run test:builds` tests both engines and the stat-line reader.
@@ -193,7 +194,10 @@ data files. What differs on Windows, and how the code handles it:
   piece's effects and the support rules) and `tree-poe1.json` (the passive tree's nodes, links and effects);
   `meta-poe1-<league>.json` and `leagues-poe1.json` from
   `scripts/fetch_build_meta.py` (archetypes and per-ascendancy skill counts per league); `generated-poe1.json` from
-  `scripts/generate_builds.mjs` (the generator's builds, checked against those counts).
+  `scripts/generate_builds.mjs` (the generator's builds, checked against those counts); `icons-poe1.json` from
+  `scripts/build_icons.py` (where each piece's picture is: passives on the tree export's sprite sheets, gems, uniques,
+  flasks and jewels by their art file in the game files). The pictures load from GGG's image server
+  (web.poecdn.com); `public/buildicons.js` draws them on the cards, each name in a pop-up.
 - `scripts/build_sources.py`: gathers the Build maker's game knowledge from public sources (GGG's tree export and game
   files, poewiki.net) and normalises it, through `scripts/poewiki.py` (the wiki's data API, cached and polite) and
   `scripts/game_files.py` (game-file tables via `pathofexile-dat`).
@@ -608,7 +612,7 @@ card from that league on (Harbinger, from Mirage), and it reappears only when re
 Betrayal, Blight, Breach, Expedition, Incursion, Legion, Ritual, Ultimatum), up to eight per map. Every card keeps its
 scarabs and lists `threads` beside them: 8 of its mechanic's Thread, or none where no Thread exists (Essence,
 Strongbox, Delirium, Beyond, Harvest, Delve, Torment, Cartography, the uber fragments). `THREADS_ARE_LIVE` in
-`public/farming.js` is off until launch; once on, today's views load the Threads, replays of older leagues keep the
+`public/farming.js` is on since 3.30's launch (2026-11-14): today's views load the Threads, replays of older leagues keep the
 scarabs, and every card that used scarabs is marked rough until someone measures it with Threads. Thread edits are
 saved apart from scarab edits. The Atlas passive advice on the cards is still 3.29's: 3.30 reworks every mechanic's
 cluster.
@@ -780,9 +784,18 @@ like) are left out until the generator can model a second skill.
 
 **Scoring a build** (`public/buildgen.js`): an *offence index* (base rate x (1 + increased) x more multipliers x
 crit or not, whichever is better x added damage x gem levels x speed x totems x the enemy's resistances after
-penetration and exposure), a *defence index* (effective HP, below) and a *clear index* (area, projectiles, chains).
+penetration and exposure x the share of hits that land), a *defence index* (effective HP, below) and a *clear
+index* (area, projectiles, chains).
 Rare gear is assumed (60% increased damage, 10% speed, for a crit build 100% increased crit and +40 multiplier),
 so the first "increased" bonus isn't overvalued; the passive tree is planned for real (below).
+**Accuracy** (`accuracyOf`, `hitChanceOf`): an attack lands with chance 1.25 x accuracy / (accuracy + 937.5),
+from 5% to 100%. The 937.5 is a quarter of 3,750, the player's report that 3,500 to 4,000 accuracy usually hits
+an endgame boss every time. Accuracy is 2 a level (level 92), 2 per Dexterity, the gear's (600 assumed, or the
+solved gear's lines and 300 from the weapon) and the pieces' lines. Spells, minions and unevadable hits (Resolute
+Technique) always land, and the bare skill that scaling is measured against does too, so a miss costs an attack
+as it would beside a spell. That makes crit or not a whole-build choice with accuracy in it: Resolute Technique
+gives up crits for every hit landing, Precise Technique's 40% more holds when accuracy is above life, and an
+Inquisitor's crit penetration still argues for crit.
 Damage can't be compared between a minion, a spell and an attack, so offence is measured as how far the pieces scale
 the bare skill. Score = scaling^0.5 x defence^0.5 x clear^0.15 (damage times effective health, as players weigh a
 build), times 0.88 when the skill needs an attribute the class doesn't start near. These are indexes for comparing
@@ -821,19 +834,44 @@ for a character with nothing defensive but gear (so 1 is "gear only"). All the n
   gear's mana lines (150 more with the fixed gear figures). Each aura, herald or reserved buff reserves its level 20
   share times 100 / (100 + reservation efficiency): the pieces' efficiency lines (a herald-only line counts for
   heralds; lines under a condition don't count) plus 10% assumed for what isn't planned (an Enlighten, cluster
-  jewels, implicits; rare gear can't roll it). At most 90% is reserved, the rest left for skill costs (our
-  estimates). Unreserved mana feeds Mind over Matter and Archmage (its 35% more is read at 1,000 unreserved mana and
+  jewels, implicits; rare gear can't roll it). Mana can be reserved up to all of it: what is left has to pay for
+  the main skill (the mana upkeep, below), and the score decides how much that is worth. Unreserved mana feeds Mind over Matter and Archmage (its 35% more is read at 1,000 unreserved mana and
   scales with the build's own, up to 8 times). Transfiguration of Mind (Divine Guidance) adds 30% of increased
   maximum mana as increased damage, Transfiguration of Body the same of increased life to attacks (GGG's tree text).
   Mana and life are two pools: Petrified Blood always reserves life (its gem protects the lower half of life), and
-  with Blood Magic everything does; each pool holds at most 90%. Petrified Blood keeps life at low life (50%; "on low
+  with Blood Magic everything does; life holds at most 90%. Petrified Blood keeps life at low life (50%; "on low
   life" lines then always hold), and its lower half loses 40% less to a hit at once, 81% of that over 4 seconds, a
   quarter within the one-second window (level 20 gem text). **Eternal Blessing** is offered as its own buff for
   each aura it supports: the aura reserves nothing and has 19% more aura effect, it takes two sockets and the
   support's strength, only one can be on, and while it is, buffs reserving mana are disabled, so only life-reserving
   ones join it (Blood Magic, Petrified Blood). The buffs are chosen twice, with and without a Blessing aura, since it
-  is often the best single buff but can lose to a set of reserved auras. Eldritch Battery's reservation from energy
-  shield isn't modelled.
+  is often the best single buff but can lose to a set of reserved auras. **Flat reservations** (2026-11-14): Clarity,
+  Vitality and Precision reserve an amount, not a share (poewiki's `mana_reservation_flat` at level 20: 279, 233
+  and 186), taken from the build's own pool after efficiency; they weren't offered before. **Arrogance** is offered
+  as its own buff for each aura it supports, like Eternal Blessing: the aura reserves life instead of mana at the
+  support's 201% multiplier, with 19% more aura effect, in two sockets. The usual use, a player's report: an
+  Eternal Blessing aura plus Precision on Arrogance (about 340 life after the assumed efficiency), whose accuracy
+  an attack build tops up to a full hit chance with an accuracy line or a tree cluster. Life reserved by
+  Arrogance doesn't put the build on low life (a low-life setup isn't modelled). Eldritch Battery's reservation
+  from energy shield isn't modelled.
+- **mana upkeep** (2026-11-13): each use of the main skill costs its gem's level-20 cost (poewiki's skill levels)
+  times each linked support's cost multiplier (Elemental Focus 130%, Lifetap 300%), plus Archmage's 5% of unreserved
+  mana before the multipliers, more or less by cost lines (Inspiration 34% less) and divided by 1 + cost efficiency.
+  Uses per second: attacks at the weapon's rate, casts at 1 / cast time, both times the build's speed; totems 0.2 a
+  second (placements), brands 0.5 (recasts), minion skills none (our estimates). Mana comes back from regeneration
+  (1.75% of maximum mana a second, plus "% of mana per second" lines, times increased regeneration, plus flat), mana
+  leech while hitting (each 1% recovers 4% of the pool a second, up to the 20% cap; a line's damage type and
+  attack/spell scope must reach the skill), mana on hit (once per use) and on kill (half a kill a second). Without
+  solved gear 80% increased regeneration stands in for an amulet's and rings' rolls, without a planned tree 60% for
+  its nodes. Over a 20-second fight the unreserved mana carries the first uses and what comes back the rest; the
+  share of the fight the skill keeps going scales its damage, and a build that can't pay for one use from what isn't
+  reserved gets 1% of it. Skills paid with life (Lifetap, Transfusion, Blood Magic) spend at most a quarter of life
+  before regeneration, life leech and life on hit must keep up (not the life flask or recharge). So cost efficiency,
+  less cost, regeneration, leech of the right type and paying with life are worth exactly the casting they keep, and
+  the auras fill what the skill doesn't need. Up to 6 buffs (was 4); the buffs are chosen again on the finished build
+  and after the tree is planned, and a set chosen as if the skill cost nothing is tried with a tree planned for it,
+  which then buys the regeneration and efficiency that pay for it. Clarity, mana flasks, Eldritch Battery paying
+  costs from energy shield and "Attack Skills Cost Life instead of 10% of Mana Cost" aren't modelled.
 - **stacking**: a plan can commit to one stat from the start, the way players build a mana-stacking Archmage or an
   evasion Dreamfeather build: mana (Archmage, Transfiguration of Mind), life (Righteous Fire, Transfiguration of
   Body for attacks), energy shield, armour or evasion (pieces that read them as damage). A stat is offered when any of
@@ -886,8 +924,8 @@ one's top characters, nearly all level 100), and what the generator takes from i
 **Composing** (`planSkill`, `composeForAscendancy`): per skill, for each weapon it could use, five supports are
 added greedily (each the one that raises the score most), and shortlists of the uniques and keystones that help it
 are made; the best two weapons go on. Then for each of the 21 ascendancies: up to four notables (two for the
-Ascendant and Reliquarian, whose borrowed notables are weaker), auras and heralds within 90% reserved after
-efficiency (see mana and reservation above) and one curse, up to four uniques from the shortlists, then the supports
+Ascendant and Reliquarian, whose borrowed notables are weaker), auras and heralds within the mana the skill doesn't
+need after efficiency (see mana and reservation and mana upkeep above) and one curse, up to four uniques from the shortlists, then the supports
 again with the rest in place. The supports are also tried first, with the reserved buffs out and chosen again after,
 so a support that wants unreserved mana (Archmage) isn't shut out by auras picked before it; the better build is
 kept. A class tree, planned before the buffs, takes them to reserve 60% (our estimate), so Blood Magic doesn't look
@@ -1005,8 +1043,8 @@ falls from 62% to 19%. Eternal Blessing, Petrified Blood, separate life and mana
 Fire and the defence-to-damage uniques are already planned for by the plain plan) and 774 run a Blessing aura;
 Petrified Blood is never chosen, since holding life at half only pays with low-life lines. Archmage with an unreserved
 pool moves casters toward Guardian (in the top 3 for 133 of the 356 skills, was 76; 3 of the 3 skills its players favour) and
-Hierophant, and Elementalist falls from 7 of 19 to 4 (Arc, Cold Snap, Vortex). `npm run test:builds` fails if this falls
-under 25%. A full run takes about 40 minutes in 28 worker threads (GENERATE_WORKERS), most of it planning trees. Known
+Hierophant, and Elementalist falls from 7 of 19 to 4 (Arc, Cold Snap, Vortex). The mana upkeep (2026-11-13, see "mana upkeep"; 7,476 builds, 66 minutes) gives 41 of 138 (30%), down 2: the median build now reserves 91% of its mana (68% before; 2,112 builds 90% or more, none before) and 3,303 of the 3,421 with a costed skill pay for it in full. Casters gain top-3 places (Elementalist 33 to 73, Necromancer 37 to 61, Trickster 14 to 33) and melee loses them (Slayer 112 to 73, Gladiator 115 to 79, Champion 32 to 12), so some melee skills whose players pick Slayer or Juggernaut drop out; mana leech and Archmage's cost now count, and Archmage no longer pays for a mana stack. Accuracy (2026-11-14, see "Accuracy"; 7,476 builds, 82 minutes in 19 worker threads) gives 43 of 138 (31%), up 2: Resolute Technique is taken by 48 kept builds (none before) and Precise Technique by 382 (426 before; its accuracy condition waits for the next mechanics rebuild). Among attack skills' top 3 places Juggernaut gains most (19 to 49, Undeniable's accuracy) and Slayer gains (63 to 74), while Berserker (118 to 95) and Inquisitor (39 to 17) lose. The 3.30 data (patch 3.30.0.1.4, same day) keeps 43 (31%), with Precise Technique's accuracy condition now read (17% of kept builds). Flat reservations and Arrogance (same day, 88 minutes) give 46 of 138 (33%), up 3: Precision runs in 790 kept builds, 418 of them on Arrogance (166 beside an Eternal Blessing aura; the median Arrogance build reserves 340 life), 494 of the 1,793 attack builds use it, and Clarity runs in 133. `npm run test:builds` fails if this falls
+under 25%. A full run takes about 80 minutes in 19 worker threads (the default, 60% of the system's 32; `--workers N` or GENERATE_WORKERS sets any count from 1 to the thread count), most of it planning trees. Known
 gaps, the next work: jewels, flasks, trigger set-ups, auras that act on enemies (Pride), impale's own damage, mana-
 stacking uniques as a set, and extra projectiles for single-target damage aren't modelled. Juggernaut (1 of the 12
 skills whose players favour it), Chieftain (0 of 11), Deadeye (3 of 10) and Elementalist (4 of 19) rank too low.

@@ -80,6 +80,15 @@ def whole_number(value):
     return int(parsed)
 
 
+def first_number(value):
+    """The first number of a Cargo list field ("29" or "12,30"), or None."""
+    for part in str(value or "").split(","):
+        parsed = number(part)
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def text_list(value):
     items = []
     for part in str(value or "").split(","):
@@ -194,12 +203,15 @@ def fetch_gems(refresh):
         "gem-levels", tables="skill_levels",
         fields=["skill_levels._pageName=page", "skill_levels.level", "skill_levels.damage_effectiveness",
                 "skill_levels.attack_speed_multiplier", "skill_levels.critical_strike_chance",
-                "skill_levels.mana_reservation_percent"],
+                "skill_levels.mana_reservation_percent", "skill_levels.mana_reservation_flat",
+                "skill_levels.cost_amounts", "skill_levels.cost_types",
+                "skill_levels.cost_multiplier"],
         where="skill_levels.level=0 OR skill_levels.level=20", order_by="skill_levels._pageName", refresh=refresh)
     return gems, levels
 
 
-LEVEL_FIELDS = ("damage_effectiveness", "attack_speed_multiplier", "critical_strike_chance", "mana_reservation_percent")
+LEVEL_FIELDS = ("damage_effectiveness", "attack_speed_multiplier", "critical_strike_chance", "mana_reservation_percent",
+                "mana_reservation_flat", "cost_amounts", "cost_types", "cost_multiplier")
 
 
 def level_values_by_skill(level_rows):
@@ -263,8 +275,16 @@ def normalise_gems(gem_rows, level_rows, types_by_effect):
             "effectiveness": number(level.get("damage_effectiveness")),
             "attackSpeedMultiplier": number(level.get("attack_speed_multiplier")),
             "baseCrit": number(level.get("critical_strike_chance")),
-            # Auras and heralds reserve a share of mana; skills with a flat reservation (Clarity) have none here.
+            # Auras and heralds reserve a share of mana; a few reserve a flat amount instead (Clarity, Vitality,
+            # Precision: reservationFlat, in mana at level 20).
             "reservation": number(level.get("mana_reservation_percent")),
+            "reservationFlat": number(level.get("mana_reservation_flat")),
+            # What one use costs at level 20, and in what ("Mana", "Life", "Energy Shield"; "Mana" when the wiki is
+            # silent). A skill with two costs lists both; the first is its main one. Supports instead multiply the
+            # cost of the skills they support (costMultiplier, in percent: Elemental Focus 130).
+            "cost": first_number(level.get("cost_amounts")),
+            "costType": (text_list(level.get("cost_types")) or ["Mana"])[0],
+            "costMultiplier": number(level.get("cost_multiplier")),
             # Transfigured gems ("Arc of Surging") have skill ids ending AltX, AltY or AltZ.
             "transfigured": re.search(r"Alt[XYZ]$", skill_id) is not None,
             "current": flag(row.get("is_in_game")) and not row.get("removal_version"),

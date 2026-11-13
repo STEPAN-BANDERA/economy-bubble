@@ -8,8 +8,8 @@
 // how many of the most played archetypes the generator found on its own, and how many of its ideas land in the
 // niche band (played, but by few).
 //
-// The skills are planned in worker threads (one per core, less two; GENERATE_WORKERS sets the count, 1 runs one
-// worker). Each skill is planned on its own, and the results are put back in skill order, so the output is the same
+// The skills are planned in worker threads: 60% of the system's threads by default, so the machine stays usable.
+// --workers N (or GENERATE_WORKERS=N) sets any count from 1 to the system's threads, the hard cap; 1 runs one worker. Each skill is planned on its own, and the results are put back in skill order, so the output is the same
 // with any number of workers.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -29,6 +29,7 @@ const CALIBRATION_GENERATED_TOP = 300;
 const NICHE_YIELD_TOP = 100;
 const CALIBRATION_MIN_PLAYERS = 100;
 const ASCENDANCIES_KEPT_PER_SKILL = 5;
+const DEFAULT_WORKER_SHARE_OF_THREADS = 0.6; // leave the rest of the machine free while a run goes on
 
 function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'));
@@ -292,12 +293,52 @@ function workerMain() {
   parentPort.postMessage({ type: 'ready' });
 }
 
-function workerCount() {
-  const asked = Number(process.env.GENERATE_WORKERS);
-  if (Number.isInteger(asked) && asked > 0) {
-    return asked;
+// The count asked for with --workers N (or --workers=N), else GENERATE_WORKERS; null when neither is given.
+function askedWorkerCount() {
+  const args = process.argv.slice(2);
+  for (let position = 0; position < args.length; position += 1) {
+    const arg = args[position];
+    if (arg === '--workers') {
+      return args[position + 1] ?? '';
+    }
+    if (arg.startsWith('--workers=')) {
+      return arg.slice('--workers='.length);
+    }
   }
-  return Math.max(1, (os.availableParallelism ? os.availableParallelism() : os.cpus().length) - 2);
+  if (process.env.GENERATE_WORKERS !== undefined) {
+    return process.env.GENERATE_WORKERS;
+  }
+  return null;
+}
+
+function workerCount() {
+  const asked = askedWorkerCount();
+  if (asked === null) {
+    return defaultWorkerCount();
+  }
+  const threads = availableThreadCount();
+  const count = Number(asked);
+  if (!Number.isInteger(count) || count < 1) {
+    console.error(`workers: "${asked}" isn't a whole number from 1 to ${threads}`);
+    process.exit(1);
+  }
+  if (count > threads) {
+    console.log(`workers: ${count} asked, capped at this system's ${threads} threads`);
+    return threads;
+  }
+  return count;
+}
+
+function availableThreadCount() {
+  if (os.availableParallelism) {
+    return os.availableParallelism();
+  }
+  return os.cpus().length;
+}
+
+function defaultWorkerCount() {
+  const share = Math.floor(availableThreadCount() * DEFAULT_WORKER_SHARE_OF_THREADS);
+  return Math.max(1, share);
 }
 
 function startWorkers(count) {

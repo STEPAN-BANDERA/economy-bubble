@@ -248,6 +248,24 @@ if (fs.existsSync(mechanicsFile) && fs.existsSync(generatedFile)) {
   check('blessing: Petrified Blood (life) beside it', generator.canAddBuff(blessed, petrified));
   check('blessing: not beside the same aura reserved', !generator.canAddBuff({ ...reserving, buffs: [wrath] }, blessedWrath));
   check('blessing: with Blood Magic a herald reserves life beside it', generator.canAddBuff({ ...blessed, keystones: [bloodMagic] }, herald));
+  // Flat reservations and Arrogance: Precision reserves a flat amount of mana; on Arrogance it reserves twice that
+  // much life instead, so it fits beside an Eternal Blessing aura.
+  const precision = named(index.buffs, 'Precision');
+  const precisionOnLife = named(index.buffs, 'Precision (Arrogance)');
+  check('flat reservation: Precision is offered and reserves flat mana', Boolean(precision) && precision.reservationFlat > 100 && !precision.reservation,
+    precision && precision.reservationFlat);
+  const withPrecision = generator.evaluateBuild({ ...reserving, buffs: [precision] });
+  const withoutAuras = generator.evaluateBuild({ ...reserving, buffs: [] });
+  const flatManaTaken = withoutAuras.unreservedMana - withPrecision.unreservedMana;
+  check('flat reservation: Precision takes about its flat mana', flatManaTaken > precision.reservationFlat * 0.8 && flatManaTaken <= precision.reservationFlat,
+    Math.round(flatManaTaken) + ' mana');
+  check('arrogance: Precision on Arrogance reserves life at about twice the amount', Boolean(precisionOnLife) && precisionOnLife.reservesLife
+    && Math.abs(precisionOnLife.reservationFlat / precision.reservationFlat - 2.01) < 0.05 && precisionOnLife.sockets === 2);
+  check('arrogance: fits beside an Eternal Blessing aura', generator.canAddBuff(blessed, precisionOnLife));
+  check('arrogance: the plain Precision does not', !generator.canAddBuff(blessed, precision));
+  const precisionLife = generator.evaluateBuild({ ...reserving, buffs: [precisionOnLife] });
+  check('arrogance: life goes down, mana stays', precisionLife.life < withoutAuras.life && Math.round(precisionLife.unreservedMana) === Math.round(withoutAuras.unreservedMana),
+    `${Math.round(precisionLife.life)} of ${Math.round(withoutAuras.life)} life`);
   // Petrified Blood: life reserved, the rest held at low life, the lower half protected.
   const withPetrified = generator.evaluateBuild({ ...reserving, buffs: [petrified] });
   const withoutBuffs = generator.evaluateBuild({ ...reserving, buffs: [] });
@@ -297,8 +315,9 @@ if (fs.existsSync(mechanicsFile) && fs.existsSync(generatedFile)) {
         curses += 1;
       }
     }
-    // The share after reservation efficiency, stored with the build (public/buildgen.js, RESERVABLE_PERCENT 90).
-    if ((stored.reserved ?? 0) > 90.05 || (stored.reservedLife ?? 0) > 90.05) {
+    // The share after reservation efficiency, stored with the build (public/buildgen.js, RESERVABLE_MANA_PERCENT 100 and
+    // RESERVABLE_LIFE_PERCENT 90).
+    if ((stored.reserved ?? 0) > 100.05 || (stored.reservedLife ?? 0) > 90.05) {
       overReserved += 1;
     }
     if (curses > 1) {
@@ -317,6 +336,24 @@ if (fs.existsSync(mechanicsFile) && fs.existsSync(generatedFile)) {
   const fireballBuffs = fireball.build.buffs.map(buff => buff.name);
   check('buffs: Fireball curses with Flammability or Elemental Weakness',
     fireballBuffs.includes('Flammability') || fireballBuffs.includes('Elemental Weakness'), fireballBuffs.join(', '));
+  // Mana upkeep: a use costs the gem's cost times each support's multiplier, less with Inspiration; Lifetap pays it
+  // with life; a build that reserves the mana one use needs can't use its skill.
+  const upkeepArcSkill = named(index.skills, 'Arc');
+  const upkeepSupport = name => ({ support: named(index.supports, name) });
+  const upkeepArc = { skill: upkeepArcSkill, ascendancy: { name: 'None', baseClass: 'Witch', notables: [] }, weapon: 'none',
+    supports: [], notables: [], keystones: [], uniques: [], buffs: [], flasks: [] };
+  const upkeepOf = build => generator.evaluateBuild(build).upkeep;
+  const bareCost = upkeepOf(upkeepArc).costPerUse;
+  const focusedCost = upkeepOf({ ...upkeepArc, supports: [upkeepSupport('Elemental Focus Support')] }).costPerUse;
+  const inspiredCost = upkeepOf({ ...upkeepArc, supports: [upkeepSupport('Inspiration Support')] }).costPerUse;
+  check('upkeep: Arc costs its gem cost', Math.abs(bareCost - upkeepArcSkill.cost.amount) < 0.01, bareCost.toFixed(1) + ' for ' + upkeepArcSkill.cost.amount);
+  check('upkeep: a support multiplies the cost (Elemental Focus 130%)', Math.abs(focusedCost / bareCost - 1.3) < 0.01, (focusedCost / bareCost).toFixed(3));
+  check('upkeep: Inspiration costs less than its multiplier alone', inspiredCost < bareCost * 1.2 * 0.8, (inspiredCost / bareCost).toFixed(3));
+  check('upkeep: Lifetap pays with life', upkeepOf({ ...upkeepArc, supports: [upkeepSupport('Lifetap Support')] }).paidWith === 'life');
+  const upkeepReservedArc = { ...upkeepArc, buffs: index.buffs.filter(buff => ['Hatred', 'Wrath'].includes(buff.name)) };
+  upkeepReservedArc.buffs.push({ name: 'Test aura', kind: 'aura', reservation: 20, effects: [] });
+  check('upkeep: a skill whose one use costs more than the unreserved mana can\'t be used', upkeepOf(upkeepReservedArc).share < 0.05,
+    upkeepOf(upkeepReservedArc).share.toFixed(3));
   // Weapons: a skill usable with many weapons gets only the held weapon's tree lines (a staff block line does
   // nothing for a sword Cyclone).
   const cyclone = generator.bestBuildFor(named(index.skills, 'Cyclone'), named(index.ascendancies, 'Gladiator'), index).build;
@@ -624,9 +661,12 @@ if (fs.existsSync(plannerMechanicsFile) && fs.existsSync(plannerTreeFile) && fs.
   const casterShield = (caster.gear ? caster.gear.items : []).find(item => item.slot === 'offhand');
   check('gear: a rare shield replaces a weaker unique shield', !caster.uniques.some(unique => unique.name === 'Rathpith Globe') && Boolean(casterShield),
     caster.uniques.map(unique => unique.name).join(', '));
-  // A stacking commitment chosen early: Spark of the Nova on Hierophant commits to mana, and so takes Archmage.
-  check('stacking: Spark Hierophant stacks mana for Archmage', caster.stacking === 'mana' && caster.supports.some(entry => entry.support.name === 'Archmage Support'),
-    String(caster.stacking) + ': ' + caster.supports.map(entry => entry.support.name).join(', '));
+  // A stacking commitment chosen early: Spark of the Nova on Hierophant commits to mana. It took Archmage while
+  // Archmage's own cost (5% of unreserved mana per use, before the supports' multipliers) went unread; paying for it
+  // now leaves it short of mana, so the test asks that the mana it stacks keeps its skill going.
+  const casterUpkeep = generator.evaluateBuild(caster).upkeep;
+  check('stacking: Spark Hierophant stacks mana and pays for its skill', caster.stacking === 'mana' && casterUpkeep.share >= 0.9,
+    String(caster.stacking) + ', upkeep ' + casterUpkeep.share.toFixed(2) + ': ' + caster.supports.map(entry => entry.support.name).join(', '));
 } else {
   console.log('(no gear data: run npm run craft:build and scripts/build_gear_mods.py for the gear checks)');
 }

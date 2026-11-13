@@ -202,6 +202,16 @@ def compact_effect(found):
 
 
 # ---------- gems ----------
+def cost_type_of(wiki_cost_type):
+    """The wiki's cost type ("Mana", "Life", "Energy Shield", "Mana per second") as 'mana', 'life' or 'es'."""
+    lowered = (wiki_cost_type or "mana").lower()
+    if lowered.startswith("life"):
+        return "life"
+    if lowered.startswith("energy shield"):
+        return "es"
+    return "mana"
+
+
 def skill_tags(types, weapons):
     tags = []
     for type_name in types:
@@ -280,6 +290,8 @@ def read_gems(gems, rules, coverage):
                 # generator doesn't model yet.
                 "trigger": "Triggered" in rule["added"] or "InbuiltTrigger" in rule["added"],
                 "exceptional": gem["dropRestricted"],
+                # The cost of a supported skill is multiplied by this, in percent (100 when the wiki has none).
+                "costMultiplier": gem.get("costMultiplier") or 100,
                 "effects": effects,
             }
             continue
@@ -308,6 +320,11 @@ def read_gems(gems, rules, coverage):
         }
         if gem.get("reservation"):
             skills[gem["name"]]["reservation"] = gem["reservation"]
+        if gem.get("reservationFlat"):
+            skills[gem["name"]]["reservationFlat"] = gem["reservationFlat"]
+        # What one use costs at gem level 20, and whether in mana or life; skills without a cost have none here.
+        if gem.get("cost"):
+            skills[gem["name"]]["cost"] = {"amount": gem["cost"], "type": cost_type_of(gem["costType"])}
     return skills, supports, missing_rules
 
 

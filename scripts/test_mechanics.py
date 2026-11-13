@@ -27,6 +27,9 @@ def expect(line, range_mode, **wanted):
 
 CASES = [
     # (line, range mode, expected fields)
+    # Precise Technique read as an unknown condition (2026-11-14), so its 40% counted at a guessed uptime whatever
+    # the build's accuracy.
+    ("40% more Attack Damage if Accuracy Rating is higher than Maximum Life", "roll", dict(kind="more", condition="accuracyAboveLife")),
     # Two-attribute lines read as all three (2026-11-12), which matters once attribute requirements are met by gear.
     ("+20 to Strength and Dexterity", "roll", dict(stat="strength", value=20.0)),
     # Bloodlines (2026-11-12): per-minion lines read as 3 stacks, so Umbral Army went on every attack build.
@@ -228,7 +231,23 @@ CASES = [
     # Slayer's Endless Hunger: overkill leech was read as 20% of all damage leeched, the largest leech in the game;
     # it only recovers on a kill. Mana leech was counted as life leech.
     ("20% of Overkill Damage is Leeched as Life", "roll", dict(kind="minor")),
-    ("0.4% of Attack Damage Leeched as Mana", "roll", dict(kind="minor")),
+    # Mana costs (2026-11-13): mana leech, mana on hit or kill and cost efficiency pay for the main skill, so the
+    # generator can reserve nearly all mana. Mana leech keeps its scope (a spell doesn't leech from attack lines),
+    # and mana gained on hit or kill was read as life recovery.
+    ("0.4% of Attack Damage Leeched as Mana", "roll", dict(kind="flat", stat="manaLeech", tags=["attack"], value=0.4)),
+    ("0.5% of Physical Attack Damage Leeched as Mana", "roll", dict(stat="manaLeech", tags=["physical", "attack"])),
+    ("Supported Attacks have (2-3.9)% of Damage Leeched as Mana", "level", dict(stat="manaLeech", tags=["attack"], subject="supported")),
+    ("Gain 2 Mana per Enemy Hit with Attacks", "roll", dict(kind="flat", stat="manaOnHit", tags=["attack"], value=2.0)),
+    ("Gain 15 Mana per Enemy Killed", "roll", dict(kind="flat", stat="manaOnKill", value=15.0)),
+    ("Recover 2% of Mana on Kill", "roll", dict(kind="flat", stat="manaOnKillPercent", value=2.0)),
+    ("Recover 1% of Mana when you Kill a Cursed Enemy", "roll", dict(stat="manaOnKillPercent")),
+    ("15% increased Cost Efficiency of Attacks", "roll", dict(kind="increased", stat="costEfficiency", tags=["attack"], value=15.0)),
+    ("10% increased Mana Cost Efficiency of Spells", "roll", dict(kind="increased", stat="costEfficiency", tags=["spell"], value=10.0)),
+    ("6% increased Mana Cost Efficiency", "roll", dict(kind="increased", stat="costEfficiency", tags=[], value=6.0)),
+    ("(3-5)% reduced Mana Cost of Skills", "roll", dict(kind="increased", stat="cost", value=-4.0)),
+    ("Gain 10 Life per Enemy Hit with Attacks", "roll", dict(stat="onHitRecovery", value=10.0)),
+    ("Supported Skills gain Base Mana Cost equal to 5% of Unreserved Maximum Mana", "level",
+     dict(kind="flat", stat="costPerUnreservedMana", value=5.0, subject="supported")),
     ("0.5% of Physical Attack Damage Leeched as Life", "roll", dict(kind="flat", stat="leech", value=0.5)),
     # Timeclasp: mana recoup was counted as life recoup.
     ("(6-12)% of Damage taken Recouped as Mana", "roll", dict(kind="minor")),
