@@ -1,0 +1,144 @@
+{
+"league": "Covens",
+"takenAt": "2026-11-14T06:38:41Z",
+"unit": "Chaos Orbs per item, as listed on poe.ninja at that time",
+"source": "poe.ninja economy API, https://poe.ninja/economy",
+"items": {
+"Amanamu's Gaze": {
+"chaos": 484.0,
+"listings": 1
+},
+"Ancient Wombgift": {
+"chaos": 1.0,
+"listings": 244
+},
+"Betrayal's Sting": {
+"chaos": 9.0,
+"listings": 225
+},
+"Black Mórrigan": {
+"chaos": 302.5,
+"listings": 1
+},
+"Bonemeld": {
+"chaos": 3.0,
+"listings": 71
+},
+"Bubonic Trail": {
+"chaos": 14.0,
+"listings": 20
+},
+"Corpse items": {
+"chaos": 8.85,
+"listings": 600
+},
+"Craicic Croaker": {
+"chaos": 19.8,
+"listings": 11
+},
+"Dawnbreaker": {
+"chaos": 10.0,
+"listings": 380
+},
+"Elegant Hubris": {
+"chaos": 56.1,
+"listings": 4
+},
+"Emperor's Might": {
+"chaos": 1210,
+"listings": 2
+},
+"Emperor's Wit": {
+"chaos": 272.2,
+"listings": 6
+},
+"Enmity's Embrace": {
+"chaos": 8.0,
+"listings": 84
+},
+"Farric Tiger Alpha": {
+"chaos": 125.0,
+"listings": 2
+},
+"Kurgal's Gaze": {
+"chaos": 121.0,
+"listings": 1
+},
+"Lavish Wombgift": {
+"chaos": 1.0,
+"listings": 200
+},
+"Legacy of the Rose": {
+"chaos": 29.0,
+"listings": 21
+},
+"Manastorm": {
+"chaos": 302.5,
+"listings": 1
+},
+"Melding of the Flesh": {
+"chaos": 40.0,
+"listings": 39
+},
+"Mysterious Wombgift": {
+"chaos": 1.0,
+"listings": 127
+},
+"Nightmare Map": {
+"chaos": 18.8,
+"listings": 65
+},
+"Provisioning Wombgift": {
+"chaos": 1.0,
+"listings": 383
+},
+"Servant of Decay": {
+"chaos": 1.0,
+"listings": 122
+},
+"Seven Teachings": {
+"chaos": 2.0,
+"listings": 34
+},
+"Shaper's Touch": {
+"chaos": 5.0,
+"listings": 29
+},
+"Starcaller": {
+"chaos": 13.0,
+"listings": 16
+},
+"Tecrod's Gaze": {
+"chaos": 121.0,
+"listings": 4
+},
+"The Annihilating Light": {
+"chaos": 605.0,
+"listings": 1
+},
+"The Arkhon's Tools": {
+"chaos": 9.0,
+"listings": 233
+},
+"The Dark Monarch": {
+"chaos": 15.0,
+"listings": 161
+},
+"Ulaman's Gaze": {
+"chaos": 121.0,
+"listings": 2
+},
+"Venarius' Astrolabe": {
+"chaos": 2.0,
+"listings": 116
+},
+"Wine of the Prophet": {
+"chaos": 544.5,
+"listings": 5
+},
+"Yoke of Suffering": {
+"chaos": 484.0,
+"listings": 1
+}
+}
+}
