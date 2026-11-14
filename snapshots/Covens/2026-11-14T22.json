@@ -1,0 +1,300 @@
+{
+"league": "Covens",
+"takenAt": "2026-11-14T22:34:26Z",
+"unit": "Chaos Orbs per item, as listed on poe.ninja at that time",
+"source": "poe.ninja economy API, https://poe.ninja/economy",
+"items": {
+"Amanamu's Gaze": {
+"chaos": 492.7,
+"listings": 23
+},
+"Ancient Wombgift": {
+"chaos": 1.0,
+"listings": 853
+},
+"Ashes of the Stars": {
+"chaos": 985.4,
+"listings": 6
+},
+"Betrayal's Sting": {
+"chaos": 2.0,
+"listings": 1823
+},
+"Black Mórrigan": {
+"chaos": 395.5,
+"listings": 6
+},
+"Bonemeld": {
+"chaos": 1.0,
+"listings": 911
+},
+"Bound By Destiny": {
+"chaos": 25.0,
+"listings": 150
+},
+"Brutal Restraint": {
+"chaos": 63.3,
+"listings": 109
+},
+"Bubonic Trail": {
+"chaos": 187.1,
+"listings": 25
+},
+"Coiling Whisper": {
+"chaos": 404.0,
+"listings": 2
+},
+"Corpse items": {
+"chaos": 3.39,
+"listings": 5046
+},
+"Craicic Croaker": {
+"chaos": 14.0,
+"listings": 95
+},
+"Crown of the Inward Eye": {
+"chaos": 80.3,
+"listings": 44
+},
+"Crystallised Omniscience": {
+"chaos": 394.2,
+"listings": 3
+},
+"Dawnbreaker": {
+"chaos": 2.0,
+"listings": 3571
+},
+"Echoes of Creation": {
+"chaos": 167.5,
+"listings": 19
+},
+"Elegant Hubris": {
+"chaos": 25.0,
+"listings": 204
+},
+"Emperor's Cunning": {
+"chaos": 85.5,
+"listings": 12
+},
+"Emperor's Mastery": {
+"chaos": 1281,
+"listings": 5
+},
+"Emperor's Might": {
+"chaos": 325.2,
+"listings": 14
+},
+"Emperor's Wit": {
+"chaos": 197.1,
+"listings": 21
+},
+"Enmity's Embrace": {
+"chaos": 3.0,
+"listings": 393
+},
+"Farric Tiger Alpha": {
+"chaos": 67.0,
+"listings": 48
+},
+"Fenumal Plagued Arachnid": {
+"chaos": 10.0,
+"listings": 58
+},
+"Festering Resentment": {
+"chaos": 1592,
+"listings": 2
+},
+"Glorious Vanity": {
+"chaos": 50.0,
+"listings": 176
+},
+"Hands of the High Templar": {
+"chaos": 7.0,
+"listings": 53
+},
+"Hateforge": {
+"chaos": 2521,
+"listings": 2
+},
+"Kurgal's Gaze": {
+"chaos": 28.0,
+"listings": 69
+},
+"Lavish Wombgift": {
+"chaos": 1.0,
+"listings": 840
+},
+"Legacy of the Rose": {
+"chaos": 16.0,
+"listings": 146
+},
+"Lethal Pride": {
+"chaos": 188.6,
+"listings": 98
+},
+"Mahuxotl's Machination": {
+"chaos": 197.7,
+"listings": 16
+},
+"Malachai's Mark": {
+"chaos": 5.0,
+"listings": 22
+},
+"Manastorm": {
+"chaos": 13.0,
+"listings": 19
+},
+"Melding of the Flesh": {
+"chaos": 10.0,
+"listings": 162
+},
+"Militant Faith": {
+"chaos": 16.4,
+"listings": 198
+},
+"Mysterious Wombgift": {
+"chaos": 1.0,
+"listings": 618
+},
+"Nightmare Map": {
+"chaos": 41.0,
+"listings": 1143
+},
+"Nimis": {
+"chaos": 8672,
+"listings": 1
+},
+"Oriath's End": {
+"chaos": 1088,
+"listings": 1
+},
+"Primal Crushclaw": {
+"chaos": 41.0,
+"listings": 5
+},
+"Progenesis": {
+"chaos": 7316,
+"listings": 1
+},
+"Provisioning Wombgift": {
+"chaos": 1.0,
+"listings": 1854
+},
+"Ravenous Passion": {
+"chaos": 6.9,
+"listings": 29
+},
+"Servant of Decay": {
+"chaos": 1.0,
+"listings": 734
+},
+"Seven Teachings": {
+"chaos": 1.0,
+"listings": 331
+},
+"Shaper's Touch": {
+"chaos": 1.0,
+"listings": 199
+},
+"Shroud of the Lightless": {
+"chaos": 988.7,
+"listings": 7
+},
+"Starcaller": {
+"chaos": 2.0,
+"listings": 76
+},
+"Starforge": {
+"chaos": 2571,
+"listings": 2
+},
+"Tecrod's Gaze": {
+"chaos": 90.0,
+"listings": 24
+},
+"The Annihilating Light": {
+"chaos": 20.0,
+"listings": 34
+},
+"The Arkhon's Tools": {
+"chaos": 2.0,
+"listings": 1540
+},
+"The Dark Monarch": {
+"chaos": 10.0,
+"listings": 614
+},
+"The Dark Seer": {
+"chaos": 494.4,
+"listings": 10
+},
+"The Eternity Shroud": {
+"chaos": 5.0,
+"listings": 26
+},
+"The Golden Charlatan": {
+"chaos": 4845,
+"listings": 1
+},
+"The Hallowed Monarch": {
+"chaos": 124.2,
+"listings": 17
+},
+"Thread of Hope": {
+"chaos": 92.5,
+"listings": 41
+},
+"Ulaman's Gaze": {
+"chaos": 26.0,
+"listings": 76
+},
+"Venarius' Astrolabe": {
+"chaos": 1.0,
+"listings": 327
+},
+"Viridi's Veil": {
+"chaos": 336.2,
+"listings": 5
+},
+"Vivid Vulture": {
+"chaos": 40.0,
+"listings": 25
+},
+"Voidforge": {
+"chaos": 2917,
+"listings": 6
+},
+"Whispers of Infinity": {
+"chaos": 1439,
+"listings": 7
+},
+"Wild Brambleback": {
+"chaos": 81.8,
+"listings": 23
+},
+"Wild Bristle Matron": {
+"chaos": 177.0,
+"listings": 17
+},
+"Wild Hellion Alpha": {
+"chaos": 43.7,
+"listings": 67
+},
+"Wine of the Prophet": {
+"chaos": 791.0,
+"listings": 34
+},
+"Wraithlord": {
+"chaos": 593.2,
+"listings": 7
+},
+"Yaomac's Accord": {
+"chaos": 122.0,
+"listings": 13
+},
+"Yoke of Suffering": {
+"chaos": 292.0,
+"listings": 14
+}
+}
+}
