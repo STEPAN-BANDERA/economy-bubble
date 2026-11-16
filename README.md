@@ -1,0 +1,1669 @@
+# Faustus Ledger
+
+A free, browser-only dashboard for Path of Exile's Currency Exchange (PoE 1 and PoE 2, PC and consoles),
+built on GGG's public hourly exchange history.
+
+The tabs sit in three folders, with the open folder's tabs in a row below: **Economy** (everything below except Crafting
+and the Guide), **Crafting** (main and Ruthless) and **Settings / Guide** (the Guide; there's no settings page yet).
+Visitors start on Economy. A folder reopens the tab last used in it, and a link like `#craft` opens the right folder.
+
+- **Top picks:** the biggest earners in the newest hour ("quick") and gaps that held all day ("steady").
+- **Flips:** the same item priced differently against two currencies (for example Chaos and Divine).
+  Buy on the cheap side, sell on the dear side, convert back. Each one shows how long the gap held and the gold cost.
+- **Routes:** loops through several markets that end with more than they started (Chaos → Alteration →
+  Divine → Essence → Chaos). Every step is checked against demand: what actually traded that hour, and the
+  buyers' stock that stayed on offer all hour (the hour's lowest stock). You're assumed to win only a share of
+  that (25% by default). A route is only as big as its tightest step. Prices are the hour's average fills
+  minus a safety margin per step, except in a wide step (the hour's low and high more than 50% apart), which is
+  counted at its typical low because its average says little about any one fill. There's also a worst-case
+  return at the hour's worst believable ratios: a lowest or highest trade more than 50% off the hour's average
+  (one Divine sold for 1 Chaos) is a mistake, replaced by the other end mirrored around the average, and the
+  worst case shows "–" when both ends are. Then a whole-unit plan. Steps with no buyers waiting are dropped, which removes fake prices from account transfers.
+- **Recipes:** fixed upgrades such as 3 essences or oils → 1 of the next tier, runes and liquid emotions in
+  PoE 2, and shard and splinter stacks.
+- **Open maths:** every column with a "?" explains its formula. **Formulas** lets you change the coefficients
+  everything uses: median vs VWAP prices, the safety margin, your share of demand, the value of gold, score
+  weights and thresholds. Three presets set the safety margin and share in one click (`PRESETS` in
+  `public/formulas.js`): Optimized (the defaults, 3% and 25%), Instant sell (take the orders already there: 5%
+  and 50%) and Patient (place your own orders and wait: 1% and 10%); the Lab's margin and share fields follow
+  them. The page recomputes live, and values are saved in your browser. Detail panels show
+  the arithmetic with the real numbers filled in. The **Lab** tab has free calculators (flip, route, score,
+  price ↔ in-game ratio) for any values you type. All coefficients live in `DEFAULTS` in `public/model.js`;
+  the formula texts are in `public/formulas.js`.
+- **Prices**, **Spreads** (buy low and sell high in one pair) and **Odd trades** (fat fingers, bait fills,
+  and account-to-account transfers through dead markets).
+- **Crafting** (PoE 1): step-by-step plans to craft the rare items worn by the most played builds on
+  poe.ninja, or any base and mods you pick. Each plan is ranked by expected cost at the exchange's prices
+  and covers chaos and alteration spam, augment/regal with a beast imprint, essences, fossils, Veiled
+  Chaos and Veiled Exalted Orbs, Eldritch Chaos/Exalt/Annul with Embers, Ichors and Orb of Conflict,
+  recombinators, Orb of Dominance, Farric Wolf/Lynx Alpha, bench blockers, metamods and bench crafts.
+  "Any base" lists every explicit mod with its weight and per-roll chance, with a coloured tag for where it
+  comes from (base, essence, veiled, bench, fossil, influence, Eldritch); the list folds away (Hide/Show), and
+  the builder and popular builds plan only when you press **Start computing** (three or more mods take 10-20 seconds). Recombinator plans come with a recipe
+  card: what to make as each input item, then what comes out and what to do next. The **Workbench** applies
+  currencies one click at a time (predictable recombination included, at the success chance the game shows)
+  and has a simulator that checks the planner's odds over 20,000 rolls.
+- **Crafting (Ruthless)**: the same planner with Ruthless rules (no bench, no Harvest, no Veiled Chaos, essences
+  and fossils only on normal items, ...), Ruthless prices in Orbs of Alchemy and builds from poe.ninja's Ruthless
+  league. A plan costing 1,000+ Alchemy gets a warning to aim lower (a fractured base, fewer mods).
+- **Valdo's maps** (PoE 1): every Valdo's map poe.ninja lists, its asking price, the unique it rewards and that
+  unique's price, and the reward minus the map: positive means the map is worth buying to run, negative that it's
+  worth more sold. Search by map, reward or modifier (a map opens to show its modifiers), hide thinly listed maps, or
+  show only the cheapest map per reward. Under "All modifiers" (collapsible), every modifier on any map is listed with how many maps on screen
+  carry it, sorted by that count or A–Z; ✓ requires a modifier and ✕ excludes it (the same buttons sit in each map's
+  own modifier list). The rules are remembered, and until you change them "Players who Die in area are sent to the
+  Void" (one death loses the map and its reward) starts out excluded. Modifiers are grouped into our own categories
+  (`public/valdomods.js`: must finish to claim, can lose the map, slows you down, weakens your build, extra bosses,
+  tougher monsters, loot and experience, solo and portals, extra content; a line no pattern reads goes to "Other"), and
+  one ✕ excludes a whole category. A "Mods" column counts each map's modifiers. "Min reward" hides cheap or unpriced
+  rewards. "Foil premium ×" scales every reward by the viewer's own estimate, since poe.ninja merges foil and plain
+  copies. A price on 2 listings or fewer gets a "thin" badge, and a reward whose dearest variant is 5 or more times its
+  cheapest a "varies" badge. ↗ beside each map and reward opens its poe.ninja page (the proxy passes poe.ninja's
+  `detailsId` through for this), and "trade" searches the official trade site: the map by name, the reward as a foil
+  copy (the trade site's `uniquefoil` rarity). poe.ninja names the reward in the map's variant ("Foil Mageblood"). The reward
+  is priced as the ordinary unique, since poe.ninja doesn't list foil copies apart; a unique with rolled variants
+  (Mageblood's flasks, Voices' passives) as its busiest variant, with the range beneath; a unique listed by links as
+  its unlinked copy, by the Farming tab's rule (below).
+- **Farming strategies** (PoE 1): how players farm for currency, each as a card showing the Atlas passives to take,
+  the scarabs and items to load, where to run, and what the drops are worth. The map mechanics (Essence, Strongbox,
+  Ritual, Abyss, Legion, Breach, Expedition, Delirium, Blight, Betrayal, Incursion, Beyond, Harvest, Delve,
+  Torment, Cartography) are joined by Pilfering for divination cards, Ritual with filled vessels, Einhar's red beasts,
+  regular, Catalysing and Inscription Ultimatum, deep Delve mining, Uber Lab, the Nightmare map uber fragment rush, and
+  uber boss kills. The last two pick a map or boss on the card, the most profitable until you choose.
+  **Sort** by profit per hour or per run, difficulty (easiest first, best earners first within a band), required
+  investment (lowest first, cheapest to keep running within a band), cost per run or name. Each card's largest figure
+  is the one it's sorted by, and sorting by name shows profit per hour. A **compact list** shows every strategy as one
+  row, with sortable columns and a click through to its card. **Prices come from three
+  places**, tagged per line: the exchange (actual trades, the **median of the last 24 hours**, so one odd trade in a thin
+  market can't swing a card), poe.ninja for what the exchange doesn't trade (uniques, beasts, Wombgifts, corpse items, Nightmare Maps; these are
+  listings, not sales, so what you sell is discounted, 15% by default and editable) and an editable estimate for what
+  neither prices (a Watcher's Eye, Inscribed Ultimatums). Your own number can replace any price but an exchange one.
+  Every quantity is an editable estimate saved in the browser. Cards say when their numbers are unmeasured ("Rough
+  numbers") and when an input has no price today (it would otherwise flatter the profit). Each drop the exchange lists
+  shows **your yield against its market**: "You farm 10.8k/h. Over the last 24h, 21k/h sold, worth 6.2 div/h". Those
+  volumes count resales too, so real demand is lower. When an hour's drops pass a quarter of what their market trades,
+  the card says what you'd make selling only that quarter, and you can sort by that figure; every other profit figure stays uncapped. Negative cards are
+  shown as such. A **league stage** menu (Day 1 to Month 3, in challenge leagues) re-prices every card from that day's
+  real exchange trades, fetched only when picked. poe.ninja has no history here, so its items and the estimates stay at
+  today's value in Divines and each card says how much of it that is; quantities and speed stay as you set them, though
+  they shift the most over a league. A market that traded in under a quarter of the day's hours gets no price, because a
+  median can't filter a wealth transfer through a dead market. The same menu replays **Mirage** and **Allflame**, the
+  previous leagues, with real prices on both sides: its exchange hours, and item prices from poe.ninja's daily dumps. Prices that
+  only made sense under old rules are left out and say why (Vivid Vulture, whose craft was removed in 3.29).
+- **Legendary league-end flip:** opens behind a warning ("Danger, generational wealth ahead"), shown until the
+  visitor proceeds once (saved in the browser; backing out keeps it). It compares the
+  chosen challenge league with the permanent league its characters move to when it ends (Standard, or
+  Hardcore, Ruthless, Hardcore Ruthless; `permanentLeagueOf` in `model.js`) over the last 24 hours, in a carry
+  currency you pick. Each item's × is what 1 unit of that currency spent on it here is worth there, after the
+  safety margin on both trades (`leagueEndRows`). The suggested luggage fills the wealth you want to move, best ×
+  first, each item capped at your share of a few days of its trade on both sides (`luggagePlan`); the rest stays
+  in the carry currency. The list folds away (click its heading; remembered). Prices are the past day's, not a forecast: a league's prices sink near its end, and
+  everyone's luggage lands in the permanent league at once.
+- **Ruthless and private leagues:** a Ruthless league (or a private league trading mostly in Alchemy) is priced
+  in Orbs of Alchemy everywhere, with lower default volume filters. Type a private league's name or PL number
+  into "Private league": the page looks back up to a week for its trades and widens the window to reach them.
+- Click any row for a chart of the last 24 hours, the exact in-game ratios, and a whole-unit trade calculator
+  you can fill with live ratios.
+- Stars, "New" badges, and an auto-update that pulls each hour as soon as GGG publishes it, with sound (off
+  by default), on-screen and desktop alerts for new picks.
+
+By default the page loads only the newest hour, a single request. History is fetched only when something
+needs it: opening a row, the steady picks, odd trades, or a longer window.
+
+All the maths runs in the browser. The only server-side pieces are two tiny Cloudflare Pages Functions that proxy
+the exchange API and poe.ninja's item prices, because neither sends CORS headers. They fit the free plan.
+
+```
+git clone https://github.com/STEPAN-BANDERA/economy-bubble.git && cd economy-bubble
+npm install
+npm run items:build   # game files -> public/data/items-{poe1,poe2}.json (names, categories, gold fees, icons)
+npm run craft:build   # Craft of Exile mod data + poe.ninja build items (main and Ruthless) -> public/data/craft/
+python3 scripts/build_ninja_history.py Mirage.zip Mirage   # optional: poe.ninja dump -> public/data/ninja-history/ (already committed)
+npm run builds:build  # wiki + GGG tree export and game files + poe.ninja archetypes + the generator -> public/data/builds/ (committed)
+npm run dev           # local server at http://localhost:8788
+npm run deploy        # Cloudflare Pages
+```
+
+Re-run `items:build` after each game patch to pick up new items and fee changes.
+
+### What the machine needs
+
+- **Node.js 22 or newer** with npm. Wrangler 4 and its local server (miniflare) need 22; `pathofexile-dat` needs 20.
+  `npm install` brings both, plus the platform's own `workerd` and `esbuild` binaries.
+- **Python 3.8 or newer**, standard library only (no `pip install`). Only the data builds use it: `items:build`,
+  `craft:build` and the scripts run by hand. The page, `npm run dev` and the tests don't.
+- **Git**. The pre-commit hook is a `sh` script: Linux and macOS have `sh`, and on Windows it comes with Git for Windows.
+  Enable the hook once per clone with `git config core.hooksPath .githooks`.
+- **Network**: `items:build` asks the game's patch servers for the current version over plain TCP
+  (`patch.pathofexile.com:12995`, `patch.pathofexile2.com:13060`), so a firewall that only lets HTTPS out stops it
+  there. The other builds use HTTPS only (poe.ninja, Craft of Exile, the trade site, the game's CDN, poewiki.net and
+  GGG's passive tree export on GitHub).
+- **A Cloudflare account** only to deploy (`npx wrangler login`); `npm run dev` works without one.
+
+`public/data/craft/` isn't committed: run `npm run craft:build` once on each machine before using the Crafting tab
+or `npm run test:craft`. The pre-commit hook skips the crafting test, with a warning, when that data is missing.
+
+### Windows
+
+The commands above work unchanged in PowerShell, cmd or Git Bash; Linux, macOS and Windows produce byte-identical
+data files. What differs on Windows, and how the code handles it:
+
+- **No `python3` command.** Python's Windows installer provides `py` and `python`, so the npm scripts start Python
+  through `scripts/run_python.mjs`: `python3` then `python` on Linux and macOS, `py -3` then `python` then `python3`
+  on Windows, using the first that reports Python 3 (a bare `python` can be the Microsoft Store stub). Set `PYTHON` to
+  choose one. When you run a script by hand, write `py` where this README says `python3`.
+- **Text encoding.** Up to Python 3.14, Python on Windows reads and writes text in the ANSI code page (cp1252), not
+  UTF-8, and turns `\n` into `\r\n`. The scripts therefore read and write every text file through
+  `scripts/text_files.py`: UTF-8 with `\n` line endings. Without it, `Maelström Talons` reached the Crafting tab as
+  `Maelstr�m Talons`.
+- **npm's `.bin` launchers.** On Windows, `node_modules/.bin/pathofexile-dat` is a shell script that can't be started
+  directly, so `fetch_exchange_items.py` runs the `pathofexile-dat.cmd` wrapper npm puts next to it.
+- **`import()` of a path.** Node's `import()` takes a URL, and a Windows path (`c:\...`) reads as one with the scheme
+  `c:`. Node scripts convert paths with `pathToFileURL()` first, as `scripts/craft_regression.mjs` does.
+- **Line endings in Git.** Git for Windows usually has `core.autocrlf=true`, which would check the pre-commit hook out
+  with `\r\n` and break it under `sh`. `.gitattributes` keeps `.githooks/*` and `*.sh` on `\n`.
+- `npm install` may warn that `esbuild` and `workerd` have install scripts it didn't run. Both still work, because
+  their Windows binaries come as separate packages (`@esbuild/win32-x64`, `@cloudflare/workerd-windows-64`).
+
+## Layout
+
+### One API per area
+
+The page has four areas: the exchange (the Economy tabs), Crafting, the Build maker and Farming (with Valdo's maps).
+Each thing is worked out in one place, and another area that needs it asks that area's API instead of working it
+out again or reaching into the other area's files:
+
+| Area | API | What other areas get from it |
+|---|---|---|
+| Exchange, inside its tabs | `quote(M, x, y)` in `public/model.js` | What a market pays: average, believable low/high, worst, spread, and the buy and sell prices a trade fills at. Routes, flips, recipes and spreads all price with it; the hourly lows and highs come from `rate()`, which drops trades that were plainly mistakes. |
+| Exchange, for every other tab | `economyApi()` in `public/economy.js` | `price(name)`, `volume(name)`, `divine()`, `window()`. app.js makes one per market model: today (a day of history, else the window), Ruthless (in Alchemy), and a farming league stage. Every price goes through the same trust rule (an item must trade in a quarter of the day's hours). |
+| Crafting | `public/craftdata.js` | The mod index and prepared bases (fetched once for every tab), the visitor's price overrides (one live object), `craftPriceInfo` (yours, the exchange, then estimates), the planner's price snapshot, and `cheapestCraftPlan` for the Build maker's rare items. |
+| poe.ninja | `ninjaLines(league, type)` in `public/ninja.js` | Each list fetched once per visit and league, retried once on failure; what a tab does with the lines stays in that tab. |
+| Build maker files | `fetchBuildFile(name)` in `public/builddata.js` | `public/data/builds/` for the Build maker, its ideas and its worker. |
+
+The tabs get their area APIs from app.js (`X.economy`, `X.todayEconomy`) or import them; a tab that special-cases
+something (Farming's poe.ninja variants, Crafting's Ruthless conversion) does it on top of the API's answer.
+
+### Files
+
+- `public/index.html`, `style.css`: the page. No build step.
+- `public/app.js`: the interface: tabs, tables, detail panel, calculator, live updates and alerts.
+- `public/model.js`: the analysis as pure functions (prices, quotes, flips, spreads, odd trades, recipes, routes, ratio maths). It runs in Node too; `npm run test:markets` tests it with the Economy and Crafting APIs.
+- `public/economy.js`, `public/craftdata.js`, `public/ninja.js`, `public/builddata.js`: the area APIs above.
+- `public/recipes.js`: fixed-ratio recipes, generated from the exchange's item names.
+- `public/formulas.js`: the formula texts, tunable parameters, and Lab calculators.
+- `public/craft.js`: the crafting engine: mod pools, one-currency rolls (the workbench), exact odds and the planner. Runs in Node too.
+- `public/crafting.js`: the Crafting tabs (main and Ruthless).
+- `public/farming.js`: the Farming strategies tab (PoE 1): the strategy library (scarab loadouts, Atlas notables,
+  maps, drops as editable estimates) plus the interface. `priceLine` decides each line's price and where it came from
+  (the exchange through the Economy API, `X.economy`, the same the Crafting tabs use, then poe.ninja, then the estimate); the
+  only maths is cost vs. value per run and per hour.
+- `public/tradelinks.js`: links to the official trade site for items the exchange doesn't trade: the Valdo's maps tab's
+  maps and rewards, the Farming cards' poe.ninja-priced lines (not "Corpse items", which is every corpse at once, nor a
+  past league) and the Build maker's unique icons (in the league picked in the League menu). The search rides in the
+  link's `?q=`, as the trade site's own addresses do, so building one fetches nothing. The queries follow poe.ninja's
+  "go to trade" button: uniques by name (Foulborn and foil filters), beasts and Wombgifts by type, Valdo's maps and
+  Nightmare Maps by name as text among maps. PoE 1 PC public leagues only: console, PoE 2 and private-league trade
+  addresses aren't checked.
+- `public/valdo.js`: the Valdo's maps tab. It loads poe.ninja's `ValdoMap` list, then the six unique lists one at a
+  time (not all at once, which on a cold cache is a burst poe.ninja may answer with HTTP 429 or time out on), drawing
+  as each arrives. A failed list is retried once after a few seconds (`public/ninja.js`, for every tab).
+- `public/data/craft/`: generated by `scripts/fetch_craft_data.py` (one file of mods per base type, plus an
+  index) and `scripts/fetch_ninja_targets.py` (items from popular builds, mods matched to tiers; `--ruthless` writes the
+  Ruthless league's to `targets-poe1-ruthless.json`). Not in git,
+  because it is derived from Craft of Exile's data; `npm run craft:build` makes it before you deploy.
+- `public/data/ninja-history/`: a finished league's daily item prices, cut down to the Farming cards' items by
+  `scripts/build_ninja_history.py` from poe.ninja's dump (download the league's zip from https://poe.ninja/poe1/data, run
+  the script, add the league to `PAST_LEAGUES` in `farming.js`). It holds only items the cards name, so rerun it after
+  adding a `ninja:` line to a card. Committed, cc-by-sa, not MIT.
+- `scripts/snapshot_ninja_prices.py`, `.github/workflows/ninja-snapshots.yml`: every six hours for a league's first two
+  weeks and daily after that, save poe.ninja's prices for the cards' items to the `snapshots` branch, because a running
+  league has no other record of them. The site doesn't read this branch yet.
+- `public/data/items-*.json`: generated. Maps `Metadata/Items/...` ids to name, category, gold fee and icon.
+- `functions/api/cx/[[path]].js`: the proxy. `/api/cx/<hour>` or `/api/cx/<poe2|xbox|sony>/<hour>`.
+  Complete hours are cached for a year. A 404 (hour not out yet) is cached for 60 s. A body that was
+  cut off is never cached.
+- `functions/api/ninja/[[path]].js`: the poe.ninja proxy for the Farming, Build maker and Valdo's maps tabs.
+  `/api/ninja/<league>/<type>`, for the item types the tabs use only. Cached for 30 minutes per Cloudflare data centre
+  (a cached answer has an `Age` header; `cf-cache-status` always says DYNAMIC) and trimmed to the fields the tabs read
+  (Valdo's maps keep their modifier lines). Every good answer is also kept for a day: when poe.ninja times out or
+  answers an error (a 429 included), that copy is served with an `X-Ninja-Stale: 1` header instead of failing. The
+  Valdo's map list, half a megabyte, gets 28 seconds before giving up, the rest 20. `npm run test:proxy` tests it offline.
+- `scripts/fetch_exchange_items.py`: reads the game's `CurrencyExchange`, `CurrencyExchangeCategories`
+  and `BaseItemTypes` tables with [`pathofexile-dat`](https://www.npmjs.com/package/pathofexile-dat), and icons from the trade site's static data.
+- `public/buildgen.js`: the Build maker's generator: support rules, which effects reach a build, the offence,
+  defence and clear indexes, composing a build, the reasons for each piece, the player bands. Pure functions that
+  run in Node too. `public/buildtree.js` plans a build's passive tree. `public/buildideas.js` draws the "Our ideas"
+  view.
+- The build planner ("Plan a build"): `public/buildtags.js` (tags on every piece), `public/buildstages.js` (the
+  stages, their total and the agents' rounds), `public/buildsearch.js` (limits, quick pass, full plans; pure, runs
+  in Node), `public/build-worker.js` (runs it in Web Workers), `public/buildplanner.js` (draws the view). Its
+  Workers box sets how many run at once, 1 to the device's threads, 60% of them by default; the choice is saved.
+  `scripts/check_against_pob.py` checks our stat-line reading against Path of Building's (`npm run check:pob`).
+- `public/builds.js`: the engine of the "What people play" view (archetype traits, the questions, ranking, the spin
+  wheel); `public/buildmaker.js` draws the tab. `npm run test:builds` tests both engines and the stat-line reader.
+- `public/data/builds/`: the Build maker's data, CC BY-NC-SA and poe.ninja aggregates (its `LICENSE.md`).
+  `game-poe1.json` from `scripts/build_game_data.py` (skills with their delivery and damage types, ascendancies,
+  keystones, bloodlines, uniques); `mechanics-poe1.json` from `scripts/build_mechanics.py` (every
+  piece's effects and the support rules) and `tree-poe1.json` (the passive tree's nodes, links, effects and GGG's wording of each node);
+  `meta-poe1-<league>.json` and `leagues-poe1.json` from
+  `scripts/fetch_build_meta.py` (archetypes and per-ascendancy skill counts per league); `generated-poe1.json` from
+  `scripts/generate_builds.mjs` (the generator's builds, checked against those counts); `icons-poe1.json` from
+  `scripts/build_icons.py` (where each piece's picture is: passives on the tree export's sprite sheets, gems, uniques,
+  flasks and jewels by their art file in the game files, and each keystone's and notable's wording from the tree
+  export). The pictures load from GGG's image server (web.poecdn.com); `public/buildicons.js` draws them on the
+  cards, each name in a pop-up, a passive's with GGG's wording under it.
+- `scripts/build_sources.py`: gathers the Build maker's game knowledge from public sources (GGG's tree export and game
+  files, poewiki.net) and normalises it, through `scripts/poewiki.py` (the wiki's data API, cached and polite) and
+  `scripts/game_files.py` (game-file tables via `pathofexile-dat`).
+- `scripts/mechanics_vocabulary.py` and `scripts/mechanics_statements.py`: our reading of stat text into effects
+  (the grammar, and the hand-written rules); `scripts/test_mechanics.py` tests them on real lines.
+- `scripts/ninja_builds.py`: reads poe.ninja's builds API: the disk cache, the protobuf search answer, and its
+  "NDIC" name dictionaries. Shared by `fetch_ninja_targets.py` and `fetch_build_meta.py`.
+- `scripts/run_python.mjs`: starts a Python script with whichever Python 3 the machine has (see "Windows" above).
+- `scripts/text_files.py`: UTF-8, `\n`-ending text reads and writes that every Python script uses, so Windows and
+  Linux builds match.
+- `scripts/dat_preload.mjs`: maps PoE2's `0.x` patch numbers, and names the schema's unnamed columns `Unk<n>` so they can be exported.
+
+## Code style (required)
+
+The code is written to be read and debugged, not to be short. `public/craft.js` is the reference.
+
+- **Explicit blocks.** Every `if`, `else` and `for` gets braces and its own lines. No `if (x) return y;` chains, no
+  `cond ? a : b ? c : d` chains, no long `.map().filter().reduce()` one-liners: write the loop.
+- **Full names.** `targetWeight`, `prefixCount`, `unveilChance`, not `tw`, `nP`, `q`. Helpers say what they do
+  (`combineBills`, `triesUntilSuccess`, `modGroupsOn`). The one exception is the planner's state vocabulary inside
+  `planOnce` (`F`, `st`, `jp`, `js`, `T`, `K`, `P`), which is explained in the comment above it.
+- **Small named functions.** A function that grows several separate jobs gets split into named helpers (see
+  `moves()`, `solve()` and the per-currency `apply*` functions).
+- **Comments say why**, in plain sentences: game rules, sources, and what a number means.
+- Verbose is fine. Token count and line count don't matter; clarity does.
+
+Refactoring the planner must not change its results:
+
+- Keep the order of floating-point additions and of random-number draws the same (sums written as loops add in the
+  same order as the `reduce` they replace; `mulberry32` draws must happen in the same sequence).
+- Some sorts are in place on purpose (`likelyStop`, `trace`); they change later iteration order, so keep them.
+- Check against saved outputs: run a fixed set of plans (several bases, phases, influences, Ruthless, a pasted
+  item, supply data) plus seeded `apply()` sequences, before and after, and compare the JSON exactly.
+  `simulateGraph` stops on a time budget, so freeze `Date.now` (for example `Date.now = () => 0`) while comparing.
+
+Every change to the crafting engine (refactor or not) runs the **crafting regression test**: `npm run test:craft`
+(`scripts/craft_regression.mjs`, about 2 minutes). It plans two fixed wands (`scripts/craft-regression/items.json`:
+a Kinetic Wand with crit suffixes and a bench spell damage prefix, and a +1/+1 chaos DoT wand with a veiled
+prefix and bench cast speed) at frozen prices (`prices.json`), the way the page does (with and without fossils),
+and compares every plan's cost with `baseline.json`. A plan more than 0.5% dearer, gone or broken fails; so does
+one that got cheaper, until its steps are checked (a dropped failure case also looks cheaper) and the baseline
+is saved with `npm run test:craft -- --update`. The crafting data isn't committed, so the baseline records the
+data's build date and the test says when the data was rebuilt. `.githooks/pre-commit` runs the test whenever a
+commit touches `public/craft.js`, `public/craft-worker.js` or the test and its fixtures (enable per clone with
+`git config core.hooksPath .githooks`; skip once with `git commit --no-verify`). Turning off the "Cannot roll Caster" + Annul
+move, for example, makes the second wand's Best mix 129% dearer and fails the test.
+
+### Patch rules
+
+A few crafting rules changed between patches. `scripts/fetch_craft_data.py` records the newest league Craft of
+Exile's data covers (`dataLeague` in `craft/index-poe1.json`), and `gameRulesOf` in `public/craft.js` picks the rules
+by it: Allflame and earlier (or data without the field) are modelled as up to 3.29, anything newer as 3.30.
+
+- **"Cannot roll Caster/Attack Modifiers" + Annul** (3.30.0 Item Changes): Annulment no longer respects these
+  metamods, so the planner stops offering the move under 3.30 rules. On the fixed wands at frozen prices the
+  Kinetic Wand's cheapest plan goes from 19,163c to 19,663c and the Opal Wand's from 15,512c to 36,492c, so
+  `npm run test:craft` will fail the first time the data is rebuilt on 3.30. That is this rule, not a regression:
+  check the plans and save the baseline with `--update`.
+- **Wild Bristle Matron**: it adds a random bench metamod that fits an open side, from the metamods the data lists.
+  3.30 adds four ("1 Prefix Modifier cannot be changed", "2 Prefix Modifiers ...", and the suffix pair, 1 and 2
+  Divines), so once the data has them each metamod the Matron can give gets rarer, and the planner prices it that way
+  with no code change. 3.30 also reprices "Prefixes/Suffixes Cannot Be Changed" by item type (4 Divines plus a Sacred
+  Orb on weapons, 4 Blessed Orbs on armour, 8 Exalted Orbs on jewellery); bench costs come from the data.
+- **Partial locks** ("1 Prefix Modifier cannot be changed", "2 Suffix Modifiers ..."): the bench protects that many
+  random mods of the side. The pick is made each time the lock is crafted, and the game doesn't show it, so the
+  planner never recrafts until it looks right and never reads a later result as telling it the pick. It uses them
+  two ways:
+  - *Sure*: on a side with no more mods than the lock holds (junk included), the lock keeps all of them, so it
+    does everything the full lock does (lock + Chaos, Veiled Chaos, Harvest reforge, Annul, Scour, Harvest
+    augment) for 1 or 2 Divines instead of 3.30's 4 Divines and more. On a short side (Simplex Amulet 1 prefix/2
+    suffixes, Focused Amulet 2/1, Helical Ring 1/4, Cogwork Ring 2/4, Manifold Ring 4/1, Geodesic Ring 4/2) that
+    is every time. A Harvest augment only uses it when the kept side is full, since a new mod there wouldn't be
+    protected.
+  - *Blind*: on a fuller side, the lock and the orb after it (Chaos, Annul or Scour) are priced as one gamble,
+    averaged over every pick the lock can make, each equally likely. The Allflame bench's best-of isn't offered
+    for these, as its results would share the one hidden pick.
+  The lock comes from the bench or a Wild Bristle Matron, whichever is cheaper. The four locks also join the
+  Matron's pool, which makes every metamod it gives rarer. The simulation counts a fractured mod among the mods a
+  lock can pick; how the game treats fractured mods, and Divine Orbs, under a partial lock is unknown. The locks
+  are recognised by their text, since their flag names aren't known before the data has them: if Craft of Exile
+  words them differently, `partialLockOf` needs the new wording. With the four added by hand at 1 and 2 Divines
+  and 3.30's full-lock prices, at the frozen test prices (2026-11-12), the cheapest plans become: Kinetic Wand
+  20,970c to 21,889c, Opal Wand 38,467c to 38,050c, and a Helical Ring (life; three resistances, all attributes)
+  3,455c to 3,840c. The rises are the Matron's bigger pool. With the Matron off, the locks only help: Kinetic
+  27,110c to 24,940c, Opal 39,810c to 38,050c, Helical Ring unchanged at 4,368c (its plan locks the four
+  suffixes, more than a partial lock holds). No cheapest plan there uses a blind lock, though some come within 1%.
+  `npm run test:craft` checks the rule and the manual behaviour ("Patch rules").
+
+## Disclaimer, privacy and license
+
+- A free fan project, not affiliated with or endorsed by Grinding Gear Games. Path of Exile, its item names,
+  icons and game data belong to Grinding Gear Games.
+- No ads, no accounts, no cookies, no analytics. The site collects nothing about visitors. Settings and stars
+  live in the visitor's own browser storage. The Farming tab's item prices come from poe.ninja through this site's
+  proxy, so visitors' browsers don't contact it. Item icons load directly from GGG's image server
+  (`web.poecdn.com`, with no referrer sent). The Cinzel font is served from this site, not a font CDN.
+- Crafting mod weights come from [Craft of Exile](https://www.craftofexile.com/)'s public data files (some weights
+  measured by the Prohibited Library community), and build items from [poe.ninja](https://poe.ninja/builds).
+  Neither is affiliated with this project. The derived files are generated locally and not committed.
+- Numbers are estimates from past trades, not financial advice.
+- The code is MIT licensed (see `LICENSE`). Cinzel is SIL OFL 1.1 (`public/fonts/Cinzel-OFL.txt`). The images
+  in `public/img/wiki/` are copies from the PoE Wiki (CC BY-NC-SA 3.0, artwork © Grinding Gear Games) and are
+  not covered by the MIT license. The files in `public/data/ninja-history/` are derived from poe.ninja's data dumps,
+  licensed cc-by-sa as poe.ninja publishes them, and aren't covered by it either. Nor is `public/data/builds/`:
+  its game data comes from poewiki.net (CC BY-NC-SA 3.0) and GGG's own exports, and its archetypes are aggregates of
+  poe.ninja's builds data (see the folder's `LICENSE.md`).
+- `robots.txt` and `sitemap.xml` point at `https://ledger.poedle.xyz/`, the Pages project's custom domain (some
+  ISPs block `*.pages.dev`; the custom domain avoids that, and `faustus-ledger.pages.dev` still works). Change
+  them, and the canonical link in `index.html`, if you deploy under another name or domain.
+
+## Credits and sources
+
+| What | Source | Terms |
+|---|---|---|
+| Hourly market data | GGG's public [Currency Exchange API](https://www.pathofexile.com/developer/docs/reference#currencyexchange) (`web.poecdn.com/api/currency-exchange`) | Public, no key; GGG's developer terms |
+| Item names, categories, gold fees | Path of Exile game files, read with [`pathofexile-dat`](https://github.com/SnosMe/poe-dat-viewer) and its community [dat schema](https://github.com/poe-tool-dev/dat-schema) | Game data © Grinding Gear Games; tool MIT |
+| Item icons | Official trade site static data (`pathofexile.com/api/trade/data/static`), images hot-linked from `web.poecdn.com` | © Grinding Gear Games |
+| Beast and Recombinator icons (`public/img/wiki/`) | [PoE Wiki](https://www.poewiki.net/) | Artwork © Grinding Gear Games; wiki content CC BY-NC-SA 3.0 |
+| Mod tiers, spawn weights, fossils, essences, bench costs | [Craft of Exile](https://www.craftofexile.com/) public JSON data, unminable weights by the Prohibited Library community | Generated locally, not committed |
+| Popular-build items | [poe.ninja](https://poe.ninja/builds) builds API | Generated locally, not committed; player names are dropped |
+| Build maker archetypes (`public/data/builds/meta-poe1-*.json`) | [poe.ninja](https://poe.ninja/builds) builds API: per-ascendancy and per-archetype searches, and a few characters per archetype | Committed as aggregates only (counts, shares, medians); no player or account names |
+| Build maker game data (`public/data/builds/game-poe1.json`) | Gems and uniques from the [PoE Wiki](https://www.poewiki.net/)'s data tables; ascendancies, notables, keystones and bloodlines from GGG's [passive tree export](https://github.com/grindinggear/skilltree-export) | CC BY-NC-SA 3.0 (wiki-derived) |
+| Build maker mechanics (`public/data/builds/mechanics-poe1.json`) | Gem and unique stat text from the [PoE Wiki](https://www.poewiki.net/), passive stat text from GGG's tree export, read by our own vocabulary; skill types and support rules from GGG's game files via [`pathofexile-dat`](https://www.npmjs.com/package/pathofexile-dat) | CC BY-NC-SA 3.0 (wiki-derived) |
+| Build maker ideas (`public/data/builds/generated-poe1.json`) | Our generator (`public/buildgen.js`), each build checked against poe.ninja's per-ascendancy skill counts | Same licence as the mechanics it is made from; counts only, no names |
+| Build planner verification (`scripts/check_against_pob.py`) | [Path of Building Community](https://github.com/PathOfBuildingCommunity/PathOfBuilding)'s `ModCache.lua`, compared against our own reading; a consultant only, never an input | MIT; downloaded into `.cache/pob/`, not committed |
+| Harvest lifeforce costs | [Maxroll](https://maxroll.gg/poe/) 3.24 Harvest guide | Numbers only |
+| Fee format, Mirage essences, Dominance rules | [poedb](https://poedb.tw/) | Facts only |
+| Farming-strategy baselines (scarab loadouts, Atlas notes, drop estimates) | public 3.29 farming guides ([timesaver.gg](https://timesaver.gg/), [Maxroll](https://maxroll.gg/poe/), [AOEAH](https://www.aoeah.com/), [MMOexp](https://www.mmoexp.com/), Farm of Exile), [poedb](https://poedb.tw/) for fragment sources and scarab effects, and community sample runs ([Wealthy Exile](https://wealthyexile.com/) public strategies) | Facts and estimates only; editable in the tab |
+| Prices of items the exchange doesn't trade (Farming tab), Valdo's maps and their rewards (Valdo's maps tab) | [poe.ninja](https://poe.ninja/economy) item overviews, fetched live through a cached proxy as [its API docs](https://poe.ninja/docs/api) advise | Not affiliated; public economy endpoints |
+| Past-league item prices (Farming tab, `public/data/ninja-history/`) | [poe.ninja raw economy data dumps](https://poe.ninja/poe1/data); filtered to the cards' items, low-confidence rows removed, values rounded, renamed beasts given current names, the cheapest copy kept where a name has several, Forbidden jewels averaged across notables without the dearest tenth | cc-by-sa, as published by poe.ninja |
+| Farming rates, loadouts and mechanics by card | Pilfering: [Wealthy Exile sample run](https://wealthyexile.com/strategies/2971/pilfering_div_cards_with_abyss). Ultimatum: [Maxroll](https://maxroll.gg/poe/currency/ultimatum-currency-strategy), [poedb](https://poedb.tw/us/Ultimatum_Scarab_of_Catalysing). Delve: [Maxroll](https://maxroll.gg/poe/currency/delve-farming-guide), [MMOexp session](https://www.mmoexp.com/News/poe-3-29-delve-farming-guide-best-low-investment-strategy-for-25-divines-per-hour.html). Ritual vessels: [poedb](https://poedb.tw/us/Blood-filled_Vessel), [AOEAH](https://www.aoeah.com/news/4733--poe-329-ritual-farm-strategy-atlas-maps--scarabs-setup). Einhar: [Timesaver](https://timesaver.gg/blog/poe-3-29-bestiary-farming-guide), [EZG](https://www.ezg.com/blog/poe-3-29-beast-farming-is-this-still-one-of-the-best-ways-to-make-currency). Uber Lab: [PoE forum guide](https://www.pathofexile.com/forum/view-thread/3878070), [PoE Vault](https://www.poe-vault.com/guides/uber-lab-farming-guide), routes on [poelab.com](https://www.poelab.com/). Uber fragments and bosses: [poedb](https://poedb.tw/us/Blazing_Fragment), [AOEAH](https://www.aoeah.com/news/4443--poe-328-voidstones--nightmare-maps-farm-guide), [Timesaver](https://timesaver.gg/blog/poe-uber-boss-farming-guide-3-29). Uber Incarnations: [poedb](https://poedb.tw/us/Traumatic_Fragment). Breach: [Maxroll low-investment](https://maxroll.gg/poe/currency/breach-league-start-strategy) and [Unstable Breach](https://maxroll.gg/poe/currency/unstable-breach-currency-farming) guides, [poedb](https://poedb.tw/us/Breach). Harbinger's removal: [poedb 3.28 notes](https://poedb.tw/us/Version_3.28.0) | Facts and estimates only; several are currency sellers' blogs, so treat their income claims with care |
+| Font | [Cinzel](https://github.com/NDISCOVER/Cinzel) | SIL OFL 1.1 |
+| Hosting and proxy | [Cloudflare Pages](https://pages.cloudflare.com/) + [Wrangler](https://github.com/cloudflare/workers-sdk) | Free plan; Wrangler MIT/Apache-2.0 |
+
+Ideas borrowed with thanks from Divine Tendies, Path of Stonks, timeolord's poe-arbitrage and Maxroll's
+flipping guide (see "Other tools seen" below).
+
+## Keys and credentials
+
+None. Every source above is public and needs no API key, the repo contains no secrets, and the site has no
+environment variables. To deploy your own copy you need your own Cloudflare account: `npx wrangler login`,
+then change `--project-name` in `package.json` and `name` in `wrangler.toml`. Keep any local secrets in
+`.env` or `.dev.vars`; both are gitignored.
+
+## What the API actually is (tested 2026-10-09)
+
+`GET https://web.poecdn.com/api/currency-exchange[/<realm>][/<hour>]`. It is public, with no OAuth.
+
+- **No CORS header** (`Access-Control-Allow-Origin` is missing for every origin), so a browser can't call it
+  directly. Hence the proxy. A GitHub Actions cron that commits JSON hourly would also work; that is what
+  `timeolord/poe-arbitrage` does.
+- One digest per hour, covering all leagues of the realm, private leagues included (`"... (PL12345)"`).
+  The id is the unix hour start. The hour becomes available once it ends; until then you get a 404 whose
+  body has `next_change_id == id`. Akamai doesn't cache those 404s.
+- Without an id you get the first hour ever (2024-07-26, Settlers). You can jump straight to any hour.
+  Any id that isn't on the hour returns 404.
+- Size: PoE1 PC is about 1 MB per hour (64 KB gzipped), with about 1,250 markets per hour. PoE2 is about
+  2.3 MB, with about 2,800 markets. Responses are `Cache-Control: max-age≈1y`.
+- Per market `[A, B]` (verified on 708/708 active markets in one hour):
+  - `volume_traded[A] : volume_traded[B]` is the total of each side that changed hands, so `vB/vA` is the hour's average price.
+  - `lowest_ratio` / `highest_ratio` are the min and max of A:B over the hour's trades. The average always falls inside.
+    They are integer pairs, e.g. `{chaos: 336, divine: 1}`.
+  - `lowest_stock` / `highest_stock` are the min and max quantity offered on each side during the hour.
+  - Markets can appear with 0 volume (stock only).
+  - GGG's reference doesn't define the stock or ratio fields, so these readings come from the data. It calls the digests
+    "purely historical": there are no open orders, no order book, and nothing from the current hour. Stock is the nearest
+    thing to pending orders, with no prices attached, and the lowest stock is what stayed on offer all hour.
+
+## Crafting data and how the Crafting tab works (studied 2026-10-10)
+
+**Craft of Exile** serves its data as plain JSON (`/json/data/main/poec_data.json`, about 8.6 MB). The useful parts:
+
+- `modifiers`: every mod with its affix (`prefix`, `suffix`, `eldritch_red`/`eldritch_blue` for
+  Exarch/Eater implicits), mod groups (two mods of the same group can't share an item), tags (what fossils
+  and metamods act on), and a source group (`mgroup`): 1 base, 2–7 Shaper/Elder/Crusader/Hunter/Warlord/Redeemer,
+  8 fossil, 10 veiled, 11 bench, 13 essence, 14 beast aspects.
+- `tiers[mod][base]`: per base type, the tiers with item level, spawn weight and value ranges. Veiled mods
+  and Eldritch implicits aren't minable; those weights were measured by the Prohibited Library community.
+- `basemods`, `bases`, `bitems`, `bgroups`: which mods each base type can have, item names, affix limits.
+- `fossils` (tag multipliers: `{"chaos":1000,"lightning":0}` is ×10 chaos, no lightning), `essences`
+  (per base, the forced mod), and `poec_common.json` → `benchcosts` (bench costs per mod, base and tier).
+
+Its JavaScript (`packages/package.js`) has two tools, which this site copies:
+
+- **Emulator** (`poec_sim*`): apply one currency at a time to an item. A mod roll builds the pool (right
+  item level, free prefix/suffix slot, no clashing mod group, metamod and fossil filters) and picks by
+  weight. A reforge rolls 4/5/6 mods with chances 8/12, 3/12 and 1/12 (3/4 mods at 65/35% on jewels).
+  Alterations give 1 or 2 mods, half and half. Chaos Orb keeps the side protected by "Prefixes/Suffixes Cannot
+  Be Changed". Veiled Chaos rerolls with one veiled mod on a random open side; Veiled Exalt adds a veiled mod on a
+  random open side, then removes another random mod (so it needs room and never fills the item); unveiling offers 3 by weight. Eldritch Chaos/Exalt/Annul act only on the
+  dominant side (Exarch stronger: prefixes; Eater stronger: suffixes). Orb of Conflict raises one eldritch
+  implicit a tier and lowers the other. Orb of Dominance needs two influenced mods, removes a random one and
+  upgrades another (elevated past the top tier). The recombinator keeps either base, averages item level,
+  pools both items' prefixes (and suffixes), draws how many survive from a table by pool size (2 → 1 or 2
+  at 2/3 and 1/3), then picks them at random. Only one exclusive mod (crafted, metamod, essence, veiled,
+  Aspect, elevated) can be kept; since 3.26.0 (2025-06-12 update) a second one picked still uses up its
+  slot, so exclusive mods make a pool bigger without adding anything (crafted fillers no longer help). Beasts: Craicic Chimeral imprints a magic item, Farric Wolf
+  Alpha swaps a prefix for a suffix, Farric Lynx Alpha the reverse, the four Firsts add an Aspect suffix.
+- **Simulator** (`poec_nsim*`): you chain steps ("chaos until these mods, else go to step 2") and it runs
+  the emulator thousands of times to report average cost. The Crafting tab does the same check per method,
+  and instead of sampling it also computes each method's odds exactly: a recursion over which targets are
+  hit, which are dead (their mod group taken by a wrong tier), and how many prefix and suffix slots are used.
+  Junk mods can't repeat their group, so junk weight shrinks as junk lands: an even share per junk group,
+  except that a junk group with a quarter or more of its side's junk weight is followed on its own. Fossils
+  make that common (Aetheric + Corroded + Metallic + Shuddering on a wand: Spell Damage is 97% of the
+  prefixes; once it lands, the gem prefixes are most of what's left, which gives Craft of Exile's 13 tries for
+  both gem prefixes; with even shares it came out at about 2,700).
+  The exact odds match 40,000-roll simulations within error, and they also work for one-in-a-billion crafts.
+
+**poe.ninja builds**: `/poe1/api/data/index-state` gives the build snapshot version,
+`/poe1/api/data/build-index-state` the top class + skill pairs, `/poe1/api/builds/<version>/search` is
+protobuf (the character and account names are string columns: message 1, field 12, values in field 7), and
+`/poe1/api/builds/<version>/character?account=&name=&overview=&type=exp` returns the items as JSON. The
+script keeps only the rare items and drops player names. Hybrid mods show up as two separate lines, not
+always next to each other, so it pairs lines when no single mod explains them, and again when a side holds more
+mods than the base allows (`33% increased Armour and Evasion` and `15% increased Stun and Block Recovery` each
+match a mod alone, but on a full item they are one hybrid prefix; two bench crafts can be one hybrid craft too).
+An item that still doesn't fit is skipped: the game sums the same stat from two mods into one line
+(`130% increased Energy Shield`), which can't be split back reliably.
+
+**Plans.** The planner treats a craft as a Markov decision process. A state is which wanted mods are on the
+item, which are blocked by a wrong tier of the same mod group, how many junk mods sit on each side, and which
+wanted mod (if any) is fractured. From each state it knows every move and the exact odds of where it leads:
+
+- reforges: Chaos, essences, fossils (Hollow included), Veiled Chaos, Harvest reforge with a type and "more
+  likely", Eldritch Chaos on the dominant side, "Prefixes/Suffixes Cannot Be Changed" + Chaos;
+- Fracturing Orb (a random mod becomes permanent; a junk fracture ruins the base);
+- slams: Exalted Orb with a cheap bench craft blocking the other side, Exalted Orb under "Cannot roll
+  Attack/Caster Modifiers", Eldritch Exalt, Veiled Exalt, Harvest "add a mod of a type";
+- removals: Annul, Eldritch Annul, metamod lock + Annul (only the unlocked side can lose a mod; the metamod
+  itself can eat the Annul), "Cannot roll Caster/Attack Modifiers" + Annul (Annulment, unlike any reforge,
+  respects those metamods on explicit mods, so wanted caster mods stay: with "Prefixes Cannot Be Changed" +
+  Veiled Chaos repeated, a wrong unveil is picked as a non-caster mod and annulled this way, which makes the
+  veiled prefix nearly free next to two +1 gem prefixes; 3.30 ends that protection, see "Patch rules" below),
+  metamod lock + Scour; Farric Wolf/Lynx Alpha swaps;
+- metamod tricks: "Prefixes/Suffixes Cannot Be Changed" + Chaos or + Harvest reforge (today's "reforge keeping
+  prefixes/suffixes"), "Cannot roll Attack/Caster Modifiers" before a slam, and "Can have up to 3 Crafted
+  Modifiers" so a blocker and an Attack/Caster metamod share one slam;
+- from a fresh base, Alteration (+Augmentation) then Regal, with or without a Craicic Chimeral imprint.
+
+It finds the cheapest strategy from every state at once by policy iteration: start from a strategy that is
+sure to finish, solve its expected costs exactly (a sparse linear system, solved directly by eliminating
+states in Markowitz order), switch every state to its cheapest move, repeat until nothing changes. An
+Alteration start is one more unknown in that system: with its rule for which Regal results to keep fixed, its
+value is linear in the states' values, and a ruined item links back to it (`keptRow` in `craft.js`). Carried
+over from the round before instead, the starting-over cost lagged behind, and every state that can ruin the
+item was priced a little too high (6% on the chaos wand: the solver said 18,016c, its own strategy simulated at
+16,938c; now 16,954c). The keep rule is improved like a move: a better one for the new values is another round.
+Progress is
+kept: an Annul that takes a wanted mod costs that mod, not the whole craft. Each method family is also solved
+on its own (with every finishing move allowed) so they can be compared. Fossil combinations of up to four are
+scored by the value of what they roll; the best three join the solve, and so do the three that hit the wanted
+mods most cheaply in one reforge (when one hard mod dominates the cost, the whole-craft values barely differ), and
+the two that hit one side's wanted mods most cheaply (fossil the gem prefixes, then do the suffixes another
+way). Only the mods fossils roll count for those (a veiled or essence-only wanted mod never comes from them). The
+"Ways to start" table also prices the alternative for each reforge: rolling until a chosen set of wanted mods lands
+at once, then finishing. It can't beat the plan's stopping rule, which may stop at that set too. The plan shown is the likeliest
+path through the strategy. Prices: the exchange; Harvest lifeforce amounts from Maxroll's 3.24 guide (Harvest
+"reforge keeping prefixes/suffixes" is no longer in the game); beasts and recombinators use editable estimates.
+The planner runs in Web Workers (`public/craft-worker.js`), two at once: one without fossils and one with them
+(fossil plans, the fossil lab, Best mix and the Recombinators with fossils). Each worker hands over every plan
+as soon as it is made (`plan`'s `onPlan`, a preview without the graph and currency count), so the list fills
+in this order: Essence spam, Alteration / Regal, Chaos spam, Veiled Chaos, Harvest, Eldritch currency, Best
+mix, prefixes first, suffixes first, the Recombinator. The fossil plans are worked out alongside but shown
+last, once the other worker is done; the same plan from both workers keeps the cheaper version. While a plan
+is being worked out the item's mods and settings are locked, and a new item waits for the current plan rather
+than stopping the workers mid-run (on a big craft a worker holds about a gigabyte).
+
+Memory: one solve is a graph of every reachable state with every move and reforge outcome (on a 6-mod wand,
+13,164 states and about 2.7 million edges, 150 to 200 MB of objects). A method's solve is shrunk as soon as
+its plan is made (`shrinkSolve`): only the states its strategy can reach keep their moves, the rest keep their
+value and chosen action (all Best mix's warm start and fossil scoring read). Best mix stays whole: much is
+built on it. Cutting rare reforge outcomes was tried and dropped: on hard crafts the hits are the rare
+outcomes, so it changed costs by up to 7% (or by under 0.3% while saving nothing at a smaller cut).
+
+**Hardest mod.** A table under the plans (`rankModDifficulty` in `craft.js`, instant) ranks the wanted mods by
+their best chance per pick: a random roll (share of its side's pool at the wanted tier), an essence or bench
+craft (always), Harvest "add a mod of a type" (share of that type on its side: the only mod of a type is always
+added, only the tier is luck), Harvest reforge with a type, or veiled + unveil; and which types are shared with
+other mods. The hardest one is the mod to buy fractured. It's a rule of thumb: the full plans below price
+every method, and fossils and later steps can change the answer (a wand's two +1 gem prefixes come from
+Aetheric + Corroded + Metallic + Shuddering, the veiled prefix from a locked Veiled Chaos, so the mod to fracture
+is the one nothing forces).
+
+**Fractured base and side order.** A button under the plans runs the whole planner once with nothing
+fractured, then once per wanted mod starting from a base with that mod fractured (its price not counted), on a
+third worker, and ranks them by what the rest of the craft costs. That measures how hard each mod is to get
+later with every method, not its weight: a rare mod that a Harvest reforge or add can force (few mods share its
+type) is easy later, so fracturing it wastes the item's one fracture. A mod whose rest costs more than "nothing
+fractured" makes the craft dearer than no fractured base at all.
+
+Each of those runs also prices the side-by-side way deterministic crafts are done (`spec.sideOrder`,
+`planSideOrders` in `craft.js`): all the prefixes first, then the suffixes, and the reverse. The first side is
+a solve of its own in which no move or reforge may aim only at the other side (a slam that can only bring a
+suffix, or "Prefixes Cannot Be Changed" + Chaos, waits until the prefixes are done; `onlyAimsAtOtherSide`).
+The strategy for the first side is chosen only for that side, as a crafter doing it would, with one exception:
+a fractured wanted mod of the other side. While choosing, an end of the phase (the first side complete) is
+worth what the best strategy pays to finish from it with the other side's wanted mods counted as junk, except a
+fractured one (`keyWithOtherSideAsJunk`). So a wanted mod of the other side that lands by luck is a bonus it
+doesn't aim for, but fracturing one first is worth aiming for: the usual opening (roll a suffix, fracture it,
+then work on the prefixes, with a lock where it helps). The plan then says so ("Fracture a wanted suffix
+first"). The phase ends as soon as that side is complete (`solve`'s `phaseGoal`: done states carry their cost
+as `term`; an end state the best solve never reached has no price, and the phase plays on from it). The same
+strategy is then priced twice (`phaseCostWithEnds`): with every end free, for what the first side alone costs,
+and with each end at what finishing really costs from it, which counts luck and wanted mods an Annul knocked
+off. That gives the cost of "this side first, then finish", which can't beat the best plan with no fixed order
+(when it plays the same strategy, rounding can put it a hair below, so it is held at the best plan's cost), and
+its steps, Fracturing Orb included (traced before the pricing, so they read as chosen). Without the fracture
+exception the order that doesn't suit the item cost 3-4 times the best plan on the regression wands (finishing
+that side under a lock needs two specific mods at once); with it, both orders cost within 2% of the best plan.
+The plan list shows both orders as plans of their own (`spec.sidePlans`); the other plans
+come out the same with or without them.
+
+**Fossils.** The fossil thread scores every combination of up to four of the most useful fossils (Craft of
+Exile's fossil calculator) and adds what only today's prices can tell. Before pricing, a quick score keeps the
+150 best for all wanted mods together, plus the 25 best for each side's wanted mods alone (each mod's chance to
+be on the item after one reforge, estimated with one pick per mod group and at most three mods per side, so
+Shuddering blocking mana prefixes and Faceted's socketed-gem suffixes are counted). The **fossil lab** lists, per
+combination, the chance one reforge rolls each wanted mod and all of them, cost and clicks per try and per full
+hit, and the whole craft when it opens with that combination and then plays the cheapest strategy; the best of
+each size (1 to 4) by each measure is on top. When both sides have wanted mods, it also lists the three cheapest
+combinations to land each side's mods together, Craft of Exile's question when only, say, the gem prefixes are
+asked for (on the regression's Opal Wand: Aetheric + Corroded + Metallic + Shuddering, 8.04% a try for both +1 gem
+prefixes, against Craft of Exile's 8.031%). Besides the cheapest fossil plan there are two more:
+**fewest clicks** (the same solve with every fossil, resonator, orb, beast or bench craft priced at one click;
+bulk payments like dust, gold, lifeforce and sulphur don't count, so Harvest and the Allflame bench are left
+out) and **cost and clicks balanced** (each click priced at what a click of the cheapest fossil plan costs,
+shown only when no other plan is both cheaper and needs fewer clicks). Their chaos costs come from simulated
+crafts. Every plan shows its clicks per craft from the same simulation.
+
+**Fossils + Recombinator.** Two inputs, each rolled with fossils until it carries a set of wanted mods (or a
+clean Alteration item), recombined into an item with 4-5. Each input is an exact spread of results: which extra
+wanted mods it brought, how much junk on each side (junk goes into the pool and lowers the odds). A wanted mod
+on both inputs is assumed to count twice in the pool (only one copy can stay); guides disagree on this (an
+AoEAH 3.29 guide says duplicates "shrink the pool", while Pohx's sceptre recipes deliberately put damage over
+time multiplier on both inputs). Every item a recombine can make is solved as a state, so the plan finishes
+from wherever the recombine lands.
+
+**Other starting points.** The steps follow the likeliest result. Under each plan, "Other starting points"
+lists the other ways the opening (the first spam, Alteration and Regal, a recombine) can leave the item, with
+their chance, what's left to pay, and the plan from there; the fossil plans also get a state graph per start.
+
+**State graph.** For the three best plans the worker also runs the strategy about 500 times through the
+state machine and draws it: columns by how many wanted mods the item has, boxes for classes of states
+(prefixes/suffixes done, fractured, junk count, slots full, magic stage, imprint saved), arrows for the
+moves the strategy makes (thicker = more often per craft; dashed arrows back are setbacks). Clicking a state
+lists every move from it with its expected cost to finish, so you can see which choices are close and why the
+strategy picks the one it does. The simulation also gives the spread of the total cost (median, 10th and
+90th percentile) next to the exact average.
+
+**Crafting (Ruthless).** The same planner with Ruthless rules (GGG's "Announcing Ruthless" post and a
+250-hour player review on the forum): no crafting bench (no bench crafts, metamods or blockers); no Veiled Chaos
+Orbs, Orbs of Binding, Orbs of Dominance, influenced Exalted Orbs or Awakener's Orbs; no Harvest crafts at all
+(reforges and resistance swaps are gone, and lifeforce is left unpriced so the rest are skipped too); no Wild
+Bristle Matron (a wrong metamod comes off at the bench); no Chaotic Resonators, and essences only upgrade a normal
+item, so an essence or fossil reforge is priced as Scour + essence, or Scour + fossils in an Alchemical
+Resonator. Prices come from the last 24 hours of the Ruthless league in Orbs of Alchemy, the main currency there.
+Its Popular builds come from poe.ninja's Ruthless league (`python3 scripts/fetch_ninja_targets.py 8 4 --ruthless`
+writes `targets-poe1-ruthless.json`).
+Not modelled: in Ruthless a reforged influenced item loses its influence. Ruthless lost unpredictable
+recombination in 3.26.0, so plans there have no Recombinator routes and the Workbench offers predictable mode only.
+The Workbench follows the same rules: no Veiled Chaos or influence buttons (influenced Exalts, Awakener's,
+Dominance, the Harvest influence crafts), and a fossil reforge charges an Alchemical Resonator, plus an Orb of
+Scouring on a rare item (`applyFossils` with `{ fossils, ruthless }`).
+
+**Predictable recombination** (3.26+): you pick which mods to keep from the two items, and the game shows a
+success chance that drops with more and higher-tier mods; a failure destroys both items. GGG hasn't published
+the formula (one 3.29 guide reports about 8% for any crafted mod, down from 40-50% in 3.27), so the Workbench
+takes the chance you read in-game, and plans still use the unpredictable mode.
+
+**Allflame bench**, from 3.29 guides: 2 to 4 outcomes depending on the currency; Intangibility (the chance the
+next craft shows one outcome) rises with each craft and carries over when the item is the base of a
+recombination; 3.29.1 added Ancient Orbs and Orbs of Chance; Sulphur costs about 1,000-2,000 for most crafts
+and 50,000+ for a Fracturing Orb, and less on jewels. It is off by default for now, until further notice: Vesper, who runs
+it, isn't in the game. Switching it on (planner options or the manual bench) shows a warning saying so.
+`npm run test:craft` keeps it on, so the baseline still covers that part of the engine.
+
+## How the Farming tab prices things
+
+**A line's price** (`priceLine` in `farming.js`), in order: the viewer's own number; "not counted" for a line whose old
+price no longer means anything (`notInPastLeagues`, past leagues only); a poe.ninja line (live, or that day's dump in a
+past league, discounted when selling); a label's estimate; the exchange; the line's fallback estimate; else no price,
+which the card lists because an uncounted cost flatters the profit. Editing a number on a farm with a map or boss choice
+pins that choice, or the card could swap away from what's being edited when another option became the best earner.
+
+**Exchange prices** are the median of the window's hourly averages. In the Farming tab an item must also have traded in
+at least a quarter of the window's hours (`farmExchangePrice` in `app.js`; the other tabs don't apply this). A median
+can't filter a wealth transfer when there are only two hours of trades: 34 Alchemy Shards sold for 61 Divines once made
+Harbinger read 288 Divines an hour.
+
+**Items with many prices.** A Forbidden jewel's value depends on its random ascendancy notable, from 10 Chaos to 10 Divines
+and beyond, so one price stands for all of them: the average across notables, leaving out the dearest tenth, whose thin
+listings would swamp it. This assumes each notable drops equally often. Corpse items use the same rule across every corpse monster, because a
+card can't say which ones drop, and past leagues, whose dumps have no corpses, fall back to an estimate. Wombgifts have one line per item level; live prices
+use the line with the most listings, and the past-league dumps, which have no listing counts, keep the cheapest. Today
+that's the same line, level 75, for all four types. Jewels poe.ninja lists once whatever their variant are editable
+estimates when the single price would mislead: Sublime Vision and Impossible Escape take a player's figures. Thread of
+Hope keeps the live price, since a player rates its Massive ring near worthless. A unique listed again by links is priced
+as its plain copy, unless that is over 10 times its cheapest linked copy: links never make an item worth less, so the
+plain price is then a few absurd listings (Allflame's plain Voidforge read 1,730 Divines on 11 listings, its 6-link 60).
+Smaller gaps stand, since thin linked lines also sell cheap. A unique whose variant is rolled on the drop is priced as
+its busiest variant, the common one: Bubonic Trail with one abyssal socket, Shroud of the Lightless
+(`NINJA_NAMES_PRICED_BY_BUSIEST_VARIANT`). Timeless jewels have one poe.ninja line each whatever their seed, so they
+are priced as the typical seed.
+
+**Kill rates and removed content.** A farm's choices can override any card field, which is how each uber boss has its own
+kills per hour. They're a player's estimates for a dedicated 0 HP miner: 15 for bosses whose invulnerability phases don't
+slow it (Eater, Exarch, Fear, Neglect), 10 for Shaper, Elder and Sirus, 7 for Maven, 5 for Dread. `removedInLeague` hides a
+card from that league on (Harbinger, from Mirage), and it reappears only when replaying an older league.
+
+**Scarabs to Threads (3.30).** 3.30 removes scarabs and adds a Thread per primary league mechanic (Abyss, Bestiary,
+Betrayal, Blight, Breach, Expedition, Incursion, Legion, Ritual, Ultimatum), up to eight per map. Every card keeps its
+scarabs and lists `threads` beside them: 8 of its mechanic's Thread, or none where no Thread exists (Essence,
+Strongbox, Delirium, Beyond, Harvest, Delve, Torment, Cartography, the uber fragments). `THREADS_ARE_LIVE` in
+`public/farming.js` is on since 3.30's launch (2026-11-14): today's views load the Threads, replays of older leagues keep the
+scarabs, and every card that used scarabs is marked rough until someone measures it with Threads. Thread edits are
+saved apart from scarab edits. The Atlas passive advice on the cards is still 3.29's: 3.30 reworks every mechanic's
+cluster.
+
+**Measured 3.30 versions (`withThreads`, 2026-11-22).** A card can carry the farm as someone has measured it with
+Threads and the new Atlas: its own runs an hour, map cost, inputs, Threads, drops, atlas and map notes, and a `source`
+link the card shows. It applies only where scarabs are gone; a replay of 3.29 or older keeps the card as that league ran
+it, and the 3.30 version has its own id so edits don't cross. A measured version isn't marked rough unless it says why
+(`roughNumbers`). Harvest and Blight have one so far, both from Farm of Exile's write-ups of creators' recorded sessions
+(the only first-week sources with samples: Maxroll's 3.30 guides give loadouts but no yields, and Wealthy Exile's
+strategies give revenue an hour without the loot).
+
+Week one compared with last league's (day 9 of each, every card priced on that day's exchange hours, Allflame's items
+from poe.ninja's dump): Allflame's mapping cards made 0.6 to 5.5 Divines an hour (median about 2.2), and 3.30's measured
+cards make Harvest 14.3 (Allflame's 3.29 card: 2.2) and Blight 5.3 (3.5). Guides claiming over 20 Divines an hour
+(Farm of Exile's Mirage Ritual 27.5, Wealthy Exile's Legion/Bestiary/Abyss 43, boss and ZHP vault rushes 22 to 36) and
+ones that lose money (Wealthy Exile's Harvest with red altars, -0.3) weren't used. Part of 3.30's lead is the league's own
+content in every map (Fate Divines, Nightmare Maps), which the measured samples include.
+
+**Demand** (`marketDemand`) compares a line's yield per hour with the units its exchange market traded per hour in the
+window. Past 25% (the share routes assume), the extra is left out of the "within demand" figure, which you can sort by. Every
+other profit figure stays uncapped. Volumes count flippers' resales, so real demand is lower. Lifeforce looks especially inflated: 42
+million Vivid an hour in Allflame's week 3. poe.ninja gives no sold volumes, so its lines have no limit.
+
+**League stages.** The exchange API serves any past hour, so a stage is 24 hours fetched on demand: the league's first
+hour plus a number of days (`FARM_STAGES`). A running league's first hour is found by searching back weekly and then halving
+the gap, and is remembered in the browser. poe.ninja's API has no daily history, so that league's poe.ninja items and
+estimates stay at today's value in Divines, and cards say what share of their value that is. Finished leagues
+(`PAST_LEAGUES`) get real daily item prices from a dump, and only estimates are carried back. Consoles don't get past
+leagues: the dump is PC data.
+
+**What replaying leagues showed.** With the same yields, the shape repeated in both leagues checked: Delve and the fragment
+rush rise to a peak around weeks 2 to 4 and collapse by month 3 (Delve 22.8 and 24.7 Divines an hour at week 3 in Mirage and
+Allflame, 2.5 and 2.2 at the end). Other farms don't transfer between leagues, and item prices can follow old rules: Vivid
+Vulture sold for thousands of Chaos in Mirage for the synthesised implicit reroll, removed in 3.29.
+
+**What it can't show.** Quantities and speed are fixed numbers, and they move most of all. Early on only the fastest players
+can run endgame content; later casual players log out while rarity stackers and party farmers stay, and fast builds move to
+harder content rather than clearing the same maps faster. No source publishes uber drop rates or beasts per map, so those
+are guesses, and a replay tests the prices, not the guesses.
+
+**Snapshots of a running league.** A GitHub Action keeps the prices a dump can't give yet on the `snapshots` branch, with no
+secrets and about 7 requests per run. A league's dump replaces its snapshots once published. poe.ninja's docs don't address
+storing or republishing live API data, so only the cards' items are kept. GitHub can delay or drop scheduled runs, so
+expect gaps.
+
+**Adding a finished league:** download its zip from https://poe.ninja/poe1/data, run `scripts/build_ninja_history.py`, and
+add its name, file, first hour and last day to `PAST_LEAGUES`. The name is the exchange's (`Allflame`, not "Curse of the
+Allflame"), and so is `SCARABS_REMOVED_IN_LEAGUE` (`Covens`). The first hour is the first one whose exchange hour lists
+the league: Allflame's is 22:00 UTC on 2026-07-24, as the two hours before have no Allflame markets. Rebuilding
+`public/data/items-poe1.json` (`npm run items:build`) keeps items a patch removed, marked `retiredIn`, because a past
+league's exchange hours still name them: 3.30 removed every scarab, and without their names a replay of 3.29 would price its
+scarabs as free.
+
+## How the Build maker works
+
+The tab has three views. **Plan a build** (the default) plans builds on demand from at least two hard limits, in the
+browser. **Our ideas** shows the builds the same generator composed in advance for every skill and ascendancy;
+poe.ninja only reviews them afterwards. **What people play** narrows poe.ninja's real archetypes down by your
+answers. The generator is the point of the tab: like the crafting planner, it has every piece and the rules for
+combining them, and it hunts for combinations few people play that should work.
+
+### The build planner ("Plan a build")
+
+Precomputing every skill x ascendancy and sorting the list doesn't scale to more choices (weights, playstyles,
+weapons), so the planner works like the Crafting tab: it plans what was asked for, when it is asked.
+
+**Hard limits.** Class, ascendancy, damage type, weapon, weapon type (one-handed, staff or bow, with a shield) and
+playstyle (hits of your own, damage over time, totems, traps and mines, minions). At least two must be chosen.
+A class is a loose limit (it leaves three ascendancies) and counts once; an ascendancy narrows 21 to one and names
+its class, so it counts as two and is enough on its own (every skill for that ascendancy, about 355 quick plans).
+A weapon and its weapon type count once. They pick the ascendancies and the *skill variants*
+(`skillVariants` in `public/buildsearch.js`): a skill, the weapons it may use, supports it must start with and
+supports it may not take. A totem limit plans totem skills as they are, and every other spell or attack with each
+support that makes it a totem (Fireball with Spell Totem, an attack with Ballista Totem); those supports can't be
+swapped out later. "Hits" and "damage over time" forbid the totem, trap and mine supports, so the plan stays what was
+asked. A damage type limit holds when at least a quarter of the finished build's damage is that type (the floor the
+"What people play" view uses). A skill that lists no damage types deals physical damage, as the engine counts it.
+Witch + fire leaves 77 variants x 3 ascendancies; Templar + totem 600 x 3.
+
+**Tags** (`public/buildtags.js`). Every support, ascendancy notable, keystone, unique, aura, curse, flask, jewel
+modifier, cluster notable, tree node and mastery option is tagged from its own effects as our vocabulary read them:
+damage types, how it hits (attack, spell, area, projectile, damage over time, ailments), playstyle (minion, totem,
+trap, mine, brand), weapons; a line with none of these is generic. Whether a piece fits a build is the engine's own
+rule (`effectCanMatter`: a defence of your own, a rule, a conversion, or an effect that reaches the skill whatever
+its condition), so a piece the tags skip is one whose every effect would add nothing, and skipping never changes a
+plan (`npm run test:builds` checks this on every unique against a Fireball build). For a Witch's Fireball the tags
+skip 68 of 225 supports, 93 of 196 jewel modifiers and 556 of 2,080 tree nodes; uniques nearly all carry a generic
+line, so few are skipped. Path of Building marks its mods the same way (bit masks for how damage is dealt and for
+keywords), which is where the idea was checked; nothing is read from it.
+
+**Wide search** ignores the tags: skills that could reach the damage type only through conversion, and hits built on
+an ailment (ignite for fire, bleeding for physical attacks, poison for physical or chaos) for a damage-over-time limit,
+are planned too; each ascendancy's build gets its uniques shortlisted again from all of them (not from those that
+reach the bare skill), and the tree measures every node. Witch + fire: 355 variants instead of 77. It is several times
+slower and rarely changes the winner; it is there to find the exceptions.
+
+**Include these items** (2026-11-25) names uniques every planned build must wear, typed in with the mechanics'
+uniques suggested as you type, and counts as one limit. They are worn from each weapon plan's start
+(`withRequiredUniques` in `public/buildgen.js`), and a weapon plan they can't be worn with is skipped, so Cyclone with
+Starforge plans only two-handed swords. The agents, the gear rounds and the check that a rare beats a unique never
+take them out, as with the unique that grants the skill, and a finished build without one is dropped (`keepsLimits`).
+Items that can't be worn together (two body armours) leave no build.
+
+**Time estimate**: beside the workers, the planner estimates how long a search takes from the quick plans, the 12
+full plans and the worker count. It uses a quick plan at 0.31 s (wide 0.37 s) and a full plan at 60 s (wide 106 s),
+measured on one desktop thread, and up to three times that for a slower device. More workers than 12 speed up only
+the quick pass.
+
+**Stages** (`public/buildstages.js`): single target (the offence index), area (the clear index), rarity (increased
+rarity and quantity of items found, which the vocabulary now reads: the plain "of Items found" lines only), EHP (the
+defence index; the card also shows the largest hit the standing pool takes and recovery a second) and speed
+(movement speed, flasks at their uptime). The total is each stage's value raised to its weight, times the attribute
+factor. The default weights (single target 0.5, area 0.15, EHP 0.5, rarity and speed 0) are the power score's own, and
+with them the total *is* the power score, bit for bit (tested), so the planner composes exactly as the generator does
+and calibration measures the same thing. Prices never enter a stage; the value plan divides the total by the price
+penalty as it divides the power score.
+
+**Quick pass, then full plans.** Every variant x ascendancy is composed without a passive tree (about 20 ms each)
+and scored by the weights. The best 12 (at most three per skill) get the full plan: the class tree, the agents'
+rounds, the tree planned again for what the agents settled on, the agents once more, and the value plan beside it
+when the page has poe.ninja's prices. Up to six Web Workers (`public/build-worker.js`) share the work; cards appear
+as they finish. Witch + fire takes about 3 s, Templar + totem about 5 s on a desktop; one thread in Node takes 5.5 s
+and 12 s for the quick passes.
+
+**The agents.** After the plan is composed, each stage with a weight takes a turn, in the order above, and proposes
+the one change (remove, swap or add a support, ascendancy notable, unique, aura or curse, flask; `moveCandidates`
+in `public/buildgen.js`, under the composer's own slot, hand, reservation and curse rules, with locked supports
+never moved) that helps its own stage most. A change goes through only when the total rises by at least 0.5% and
+every earlier stage keeps at least 1 - tolerance of the value it had when the rounds began (5% by default, our
+estimate of a trade players accept). A later stage therefore consults the earlier ones before it trades their value
+for its own; that is how the plan settles its ratio of attack to defence. The rounds stop when one changes nothing,
+or after six. The card lists every accepted swap and what it did to each stage, e.g. "Single target: Xoph's Blood for
+Rathpith Globe (single target +12%, ehp -8%)". The composer only adds pieces worth 1.5% each; the agents also swap
+and take smaller steps, so they mostly add flasks the composer passed over and trade a unique or a support. With the
+default weights the agents still change the plan, so a planner card can differ from the same pairing in "Our ideas".
+
+**Gear rounds** (`improveGear` in `public/buildrevisit.js`). The agents swap uniques only from the skill's shortlist and
+never solve the rare gear again, so once the set is formed a unique it now makes worth it, or a rare that now beats a
+unique, goes unseen. After the agents, every gear slot and the jewel sockets are revisited the way the revisit panel
+does it: each unique that fits the slot, whatever it costs (the power plan is price-blind), is ranked with the
+displaced rare's resistances and attributes kept, and the best one, when it already beats the build, is scored again
+with the other rares solved around it; for a slot holding a unique, a rare at the build's gear level is tried too.
+The best change of a slot is taken when the total rises by at least 0.5%, the card's limits still hold and every
+weighted stage keeps 1 - tolerance of its value (the agents' rules). The rounds stop when one changes nothing, or
+after three; when they changed something the agents get one more turn. The card lists each change ("boots:
+Rainbowstride for rare boots (total +3.6%, round 1)"). On four test plans in one Node thread (2026-11-23) they raised
+the total 11% to 21% (Fireball Elementalist 238 to 280, Lightning Arrow Deadeye 79 to 95, Raise Spectre Necromancer 70
+to 83, Cyclone Slayer 53 to 61) and took 1.3 to 1.7 times as long (Fireball 17 s to 23 s). `fullPlan(..., { gearRounds:
+0 })` turns them off. "Our ideas" doesn't run them.
+
+**Path of Building is a consultant**, like poe.ninja: it checks our work afterwards and is never an input.
+`scripts/check_against_pob.py` (`npm run check:pob`, about 6 s) downloads PoB's `ModCache.lua` (its ~23,000 game stat
+lines already read into mods; [Path of Building Community](https://github.com/PathOfBuildingCommunity/PathOfBuilding),
+MIT) into `.cache/pob/` once a week, runs every line through our vocabulary and reports where we differ: conditions
+PoB reads and we don't (these overrate a piece), disagreements of kind, value or damage type on the mods we compare,
+the groups of lines PoB reads and we leave unread, and lines we read and it doesn't. A disagreement is a question:
+fix a real misreading in our own words and add the line to `scripts/test_mechanics.py`. First run (2026-11-12):
+PoB reads 19,105 of 23,201 lines and we read 15,921; on the 3,599 we compare value for value, 3,487 agree. Its
+first real catch was "Burning Damage", which we read as ignite only; what it found next and what the vocabulary was
+taught is under "The generator" below (after it: we read 16,170, and 3,578 of 3,650 compared agree). Running PoB's
+own calculator headless on our finished builds, to compare DPS and EHP, is the next step for the consultant; it needs
+Lua 5.1 or LuaJIT.
+
+### The generator ("Our ideas")
+
+**What it knows** (`scripts/build_mechanics.py` -> `public/data/builds/mechanics-poe1.json`): every current skill and
+support gem, ascendancy notable, keystone, tree notable and unique. Where it comes from is in "Where the game data
+comes from" below. Each
+stat line is read into an *effect* by `scripts/mechanics_vocabulary.py`, a hand-written reading of how the game words
+its stats: "Supported Skills deal 39% more Spell Damage" becomes `more damage [spell] 39, from the support`.
+The grammar handles subjects (supported skills, minions, totems, enemies), conditions (weapon requirements become
+hard requirements; "on low life", "recently", "per charge" become conditions weighed by how often they hold),
+and the number patterns (increased, more, added, gem levels, conversion, penetration, exposure, block...). Rules
+that aren't numbers (keystones, many ascendancy mechanics, a few build-defining uniques and supports) are written
+once each in `scripts/mechanics_statements.py`, with our own estimate of what each is worth and why.
+A line the vocabulary can't read fully is left out, never guessed: a stray unknown word may be the line's real scope
+("Damage with Movement Skills"), and reading it as global would be worse than not reading it. The build prints how
+much it understood (2026-11-11: ascendancy notables 97%, keystones 95%, tree notables 86%, uniques 79%, support lines
+70% but the main effect of nearly every support) and writes the rest to `.cache/mechanics-unread.json`.
+Auras, heralds, banners and curses word their stats from the outside ("You and nearby allies gain ...", "Buff
+grants ...", "Cursed enemies have ..."); the vocabulary rewrites each into the words the same stat has on your own
+character, and only those lines are kept for them (a herald's own burning damage or summoned minions aren't
+something it gives the main skill). What enemies *deal* is read as damage you take ("Nearby Enemies deal 8% less
+Elemental Damage" is 8% less damage taken), what they *take* or *have* as offence.
+What `npm run check:pob` found and the vocabulary was taught (2026-11-12): "Burning Damage" is fire damage over time
+(it was read as ignite only, so burning skills like Righteous Fire went without it); conditions after a special
+shape or a hand-written statement were dropped ("+10% to Damage over Time Multiplier if you've Killed Recently"
+read as always on), and now become the effect's condition when the line without them reads the same; a unique
+flask's "during Effect" lines hold under the flask condition (they had become made-up stats); "while affected by
+Hatred" holds exactly when the build runs Hatred; "from Cursed Enemies" is a condition; a burst of regeneration
+every 4 seconds counts a quarter of its percent a second (a statement had made it 8% a second); "Effect of Curses
+on you" is no longer the effect of your own curses. Aura, herald and curse effect is now modelled: "increased
+effect of Non-Curse Auras from your Skills", "Anger has 20% increased Aura Effect" (that aura only), "Effect of
+Herald Buffs" and "Effect of your Curses" scale those buffs' lines. Two rewrites of "within N metres" had backspace
+characters where `\b` was meant and never matched. Conditions PoB reads and we don't fell from 477 to 300 (most of
+the rest are PoB's own bookkeeping: weapon-local lines, "Flasks applied to you"), unread lines PoB reads from
+4,750 to 4,501. The vocabulary also got about 300 times faster: its statement patterns were compiled again for
+every line, there being more of them than Python's regex cache holds.
+
+**The tree audit** (2026-11-23, `npm run audit:tree`, `scripts/audit_tree_reading.py`): every line of the passive tree, its mastery options
+and the ascendancies, straight from GGG's export, sorted into unread, partly read (left out), read into a name no
+engine file uses (so it changed nothing), and read. The coverage counts call the third kind understood, and it hid
+misreadings. Of 2,897 distinct lines, 412 were unread, 102 partly read and 268 read into unused names; now 9 are
+unread, none partly read, and the 251 still unused are rules the engine doesn't model yet (stun, avoidance, totem
+life, cooldowns; see below). Coverage went from ascendancy notables 96%, keystones 95%, notables 86%, small passives
+95% and mastery options 57% to 100%, 100%, 100%, 100% and 99.5%. What was wrong:
+- GGG's export wraps a long stat inside its string, and a second half starting with a capital was read as a stat of
+  its own: Arcane Capacitor's "10% increased Effect of Arcane Surge on you per / 200 Mana spent Recently, up to 50%"
+  became `effect:arcaneSurgeOnYouPer`. A line now continues when the one before stops on a word no stat ends on.
+- "increased Area of Effect" became `effect:areaOf` (the shape for "increased Effect of X" took it first) on 33
+  nodes and every area support (Increased Area of Effect, Intensify, Pulverise), so area counted for nothing.
+- Conditions were folded into made-up names ("Effect of Shocks you inflict on Cursed Enemies",
+  "Curses on you during Effect of any Mana Flask"); they are now the effect's condition or requirement.
+- "Recovery per second" was read as "per stack"; ailment duration "on you" as the duration of your own ailments;
+  "fire an additional Projectile" was a flag nothing read; chance to deal double damage with a scope or condition
+  stayed a chance nothing read; "Hex Master" and Supreme Ego wrote their curse and aura effect to names nothing read.
+- "with Claws or Daggers", "Axes or Swords", "while wielding a Claw or Dagger" needed both weapons (or the first
+  only). A tag written `claw|dagger` is now any of its parts.
+- Claw Mastery's "Gain 25 Life per Enemy Hit with Main Hand Claw Attacks" was read as life on hit for every build.
+New scope words come from skill types in GGG's files (Retaliation, Link, Mark, Stance); the rest are statements in
+`scripts/mechanics_statements.py`, each group with its reason. Exposure counts as -10% resistance, our
+understanding of the base value (poewiki couldn't be read to check it). The engine now reads leech rate and the leech
+cap, "more" aura and curse effect, a named aura's reservation efficiency (it had applied to every aura) and "more"
+reservation, Lone Messenger's disabled auras and the extra curse of Whispers of Doom and the Occultist, none of which
+it checked before. Left unread on purpose: the Reliquarian's Blackflame, Shade of Solaris, Transfiguration of Soul,
+Festering Resentment and Choir of the Storm, Bleeding Mastery's aggravation and "Critical Strikes do not inherently
+Ignite": rules we can't value without guessing. Read but not modelled (the audit's "unused"): Slayer's base critical
+strike chance for attacks, Inquisitor's spell critical strike chance from the weapon, Elementalist's "All Damage can
+Ignite/Shock/Chill", Unbreakable's armour against chaos, Necromantic Aegis, mark and Elusive effect, power and frenzy
+charge generation.
+
+**Random modifier tables** (same day): poewiki lists the alternatives a unique can roll (Skin of the Lords' keystone,
+Watcher's Eye's aura mods, Sublime Vision's aura bonus) in a table, and the reader took every alternative at once:
+Skin of the Lords carried all 49 keystones and was in 1,826 of the 3,756 generated builds. The 35 uniques with such a
+table are now read without it (their other lines as usual), and Skin of the Lords, which rolls one keystone and is
+bought for it, comes in one version per keystone ("Skin of the Lords (Iron Reflexes)"), priced as the item, one worn
+at a time, and its keystone never taken again in the tree or by the composer. Elemental Equilibrium's 10% more
+elemental damage now holds under a condition: it gives a build of one element nothing, and its Skin of the Lords
+version went on pure lightning builds. A keystone already held (a version, or a keystone the composer took) is never
+allocated again in the tree, which it could be before.
+
+**What every build wore** (2026-11-25): a keystone, unique or buff that builds of every kind take (attacks, spells,
+minions, damage over time alike) is more often a misreading than a find, so the committed builds were counted. Of
+3,769: the Frost Shield buff in 89%, Haunting Memories 55%, The Pariah 49%, Corrupted Soul 37%, Bitter Heresy (Lycia
+bloodline) 26%, and masteries about ranged or melee situations in a third of all builds, bow builds included. What
+was wrong:
+- Haunting Memories' "(50-100)% of Suppressed Spell Damage taken Recouped as Energy Shield" read as 75% of *all* damage
+  recouped as life. A recoup line with a scope is now read only for a damage type ("40% of Physical Damage taken
+  Recouped as Life", the Assassin's Shadowed Blood, which had also read as all damage), weighed by that type's share
+  of the reference hit; any other scope stays unread.
+- The Pariah's "+(100-200) to Maximum Life per Red Socket" and its mana and energy shield lines read as "per stack" at
+  three stacks: 450 life, mana and energy shield at once. The ring has one socket, so it gives one of them. A
+  one-socket unique with colour lines (The Pariah, Crown of the Tyrant) now comes in one version per colour, like Skin
+  of the Lords' keystones.
+- Corrupted Soul's "50% of Non-Chaos Damage taken bypasses Energy Shield" was a flag nothing read, so its 15% of life
+  as energy shield came free. Energy shield now takes only its share of each hit: the pool is life + energy shield
+  when energy shield runs out first, and life over its share of the hit when life does (The Burden of Truth too).
+- Bitter Heresy's Chaotic Might comes through Profane Ground you create, which needs a way to make Consecrated Ground
+  (Sanctuary, the Inquisitor's and Righteous Fury's chances, Bottled Faith and other "Creates Consecrated Ground"
+  flasks, Consecrated Path, Sanctify, Holy Relic). It counted half the time for everyone; now only with such a way.
+- Conditions that hold for only some builds read as generic ones: "at Close Range" as "nearby" (always for melee, 30%
+  ranged), "per Enemy in Close Range" as three stacks (1.5 melee, 0.3 ranged), "against Enemies that are on Full
+  Life" as your own full life (5%: each enemy's first hit), "with Skills that Cost Life" as 50% (only when the skill is
+  paid with life), "for each different Non-Instant Spell you've Cast Recently" as three (two). Ignite and shock no
+  longer count 40% of the time for a build without fire or lightning damage (Fire Mastery's 100% increased damage
+  against ignited enemies sat in 28% of builds).
+Frost Shield's pool grows only while energy shield is lost, so it was riding on the false energy shield above. The
+rerun's counts are under "Calibration".
+
+The first rerun (3,778 kept builds) showed what was left. Haunting Memories, The Pariah and Bitter Heresy dropped out of
+the most used. Frost Shield stayed at 87%, Corrupted Soul rose to 44% and Stasis Prison to 30%. All three are read
+right and are the model's honest answer rather than misreadings:
+- Frost Shield drains 730 energy shield a second and gains a stage every 0.3 seconds, so the 600 to 860 energy shield
+  that life builds carry would reach about three stages in game. The model counts less than that.
+- Corrupted Soul (Glorious Vanity) is 15% of life as extra energy shield. With half of each hit passing it by, that is
+  still 15% more pool.
+- Stasis Prison recoups (80-100)% of damage as life.
+None of them is priced in the power plan. The rerun also showed melee builds losing ground (Berserker's top-3 places
+95 to 54, Juggernaut's 93 to 66), which led to three real gaps:
+- **Two-handed melee weapons were never planned.** A sword build was always a one-hander, so Boneshatter and
+  Earthshatter never held the two-handed axes and maces their players use, and the tree's two-handed lines never
+  counted. Two-handed swords, axes and maces are now weapon kinds of their own (`twoHandSword`, `twoHandAxe`,
+  `twoHandMace`; still a sword, axe or mace to the tree, uniques and supports). A skill may hold them where its weapon
+  rule names the two-handed class (`twoHandedWeapons` in the skill data).
+- **The bare plan pruned staves and two-handers.** Each skill's weapons are first planned without a tree, and only the
+  best two went on to the ascendancies. One-handers lead there, but on the tree a staff (staff block) or a two-hander
+  can win: Heavy Strike Juggernaut scored 72.2 with a staff against 63.1 with one-handed swords. The best plan of each
+  weapon group (one hand, staff, two-handed melee, bow) now goes on too (`keptWeaponPlans`).
+- **No sword, axe or mace unique could be held.** poewiki calls the classes "One-Handed Sword" and "Two-Handed Axe",
+  while the slots used GGG's "One Hand Sword" and "Two Hand Axe". So the 119 such uniques had no slot, and their
+  local lines were read as global: Starforge's increased physical damage would have been the character's. Their
+  categories are now GGG's.
+A unique weapon used to count as hitting like the reference rare, with its other lines on top. The Grey Spire, a
+staff with no physical damage lines and 350% increased global damage, carried that 350% on top of a rare's hit. Each
+unique weapon now has its own hand (`weaponHand`): its base's damage, speed and crit from poewiki, with its local
+lines at the middle of their rolls. It is weighed against the reference rare on the planned weapon's base, as a solved
+rare is. "Implicit Modifier Magnitudes are Doubled" and "% increased Implicit Modifier magnitudes" now scale the
+item's implicit (The Grey Spire blocks 50% of attacks, not 25%).
+
+The second rerun put a staff in 48% of melee builds. Block is valued as Path of Building does it (effective HP over
+1 − block, so each point near the cap is worth more), so the curve wasn't the bug. Two things were:
+- **The weapon base never counted.** An attack's offence index had no weapon base damage in it, and each weapon was
+  measured against its own bare skill, so a Karui Chopper (a good rare hits for about 589, 742 physical DPS) counted
+  the same as an Imperial Staff (470, 648) or a Legion Sword (312, 449). A staff's block cost it no damage. Now an
+  attack carries the reference rare's damage per second on its weapon base, flat added damage counts against that
+  base's hit (not a fixed 250), and the baseline is the skill's best bare weapon (`referenceWeaponOf`, `bareOffence`).
+- **Dual wielding's own bonuses** are +20% chance to block attack damage and 10% more attack speed (3.25). The model
+  had 15% block and no speed, and Gladiator's "Inherent Bonuses from Dual Wielding are doubled" doubled the speed only.
+Staves still win where block decides. Imperial Staff's implicit is 25% spell block, staves roll suffixes of up to 20%
+attack and 20% spell block, and the tree's staff block adds 37% attack and 17% spell block. At the generator's gear
+level (one tier below the best) that is close to capped block on both, which is how players describe staves at very
+high investment; at lower investment axes do more.
+
+Local item lines (a weapon's own increased physical damage, an armour's own armour) are dropped: a good rare of the
+same kind gives about as much, and what makes a unique worth building around is its other lines. A unique weapon's
+local damage, speed and crit lines are kept apart as its hand (`weaponHand`, above), since attacks hit with it.
+
+**Weapon rules** come from the same game files (`ActiveSkills.WeaponRestriction_ItemClassesKeys`): until
+2026-11-11 the item classes were looked up by their plural display names ("One Hand Maces") and matched nothing, so
+every attack's weapon was guessed from its skill types (a transfigured Kinetic Blast was planned on a bow). Now 181
+skills and 14 supports carry their weapons.
+
+**Which support fits which skill** is exact: GGG's game files (read with `pathofexile-dat`, like the exchange item
+list) give every skill's types and every support's allowed, added and excluded types, in postfix form (`Spell
+Totemable AND`). `typeExpressionMatches` evaluates them as Path of Building does. A support that adds types (Spell
+Totem adds SummonsTotem) lets further supports fit (Multiple Totems). A support that fits only a summoner's minions
+(Melee Physical Damage on Summon Raging Spirit) applies to the minions. Trigger supports (Cast on Death and the
+like) are left out until the generator can model a second skill.
+
+**Skills a unique gives** (`UNIQUE_MAIN_SKILLS` in `scripts/build_mechanics.py`, 2026-11-22): an archetype built
+around a skill no gem gives is a main skill of its own, named after its unique ("Summon Phantasm (Soulwrest)":
+Soulwrest triggers level 25 Summon Phantasm when you consume a corpse). Its types come from GGG's game files
+(`GrantedEffects` -> `ActiveSkills`). Every build of it wears the unique (it can't be dropped or traded for a rare,
+and it doesn't count against the four uniques). The support gems socketed in the unique support the skill, so a
+two-handed Soulwrest is the six-link, and other items' "socketed gems" lines don't reach it. The skill takes no
+socket and costs nothing, but its set-up gems take sockets the buffs would have (Soulwrest: one gem that makes corpses
+and one that consumes them, a player's report of "cyclone+desecrate+offering"). Its level is the unique's, so gem
+level lines don't reach it.
+**Unholy Might and Chaotic Might** are two buffs, each defined once (`might_buff` in `scripts/mechanics_statements.py`)
+and used by every line that grants it. Unholy Might is read as it has been since 3.24: 100% of physical damage
+converted to chaos and a 25% chance to wither on hit (we had its old 30% of physical as extra chaos, which 3.24 gave to
+the new Chaotic Might). A buff gained at a chance for some seconds ("10% chance to gain Chaotic Might for 10 seconds on
+Kill") counts the share of the time it is up, from our estimates of kills and crits a second. Because the generator
+converts damage whatever a line's condition, a conditional Unholy Might's conversion is written already scaled by how
+often the buff is up. Ghastly Gaze of the Lich's riders need three Ghastly Eye jewels, which aren't planned, so they're
+left out (its penetration had been read as always on). Each Withered debuff is 6% increased chaos damage taken,
+up to 15, and each expires 2 seconds after it lands. So the debuffs held are hits a second x chance x 2: a minion army
+hitting about 10 times a second (our estimate, from a player's report) holds 5 from Unholy Might, counted as 30% more
+chaos damage, and 12 from Severed in Sleep's 60% chance. Command of the Pit's "25% chance to gain Unholy Might on Hit
+with Spells" reaches only minions that hit with spells. The buff is each minion's own (every new minion has to roll it),
+so it holds 85% of the time, and not at all beside Unnatural Strength, whose minions always have it. Converting to
+chaos costs the physical supports (Brutality deals no chaos), so the plan only takes Unholy Might where that pays.
+
+**Scoring a build** (`public/buildgen.js`): an *offence index* (base rate x (1 + increased) x more multipliers x
+crit or not, whichever is better x added damage x gem levels x speed x totems x the enemy's resistances after
+penetration and exposure x the share of hits that land), a *defence index* (effective HP, below) and a *clear
+index* (area, projectiles, chains).
+Rare gear is assumed (60% increased damage, 10% speed, for a crit build 100% increased crit and +40 multiplier),
+so the first "increased" bonus isn't overvalued; the passive tree is planned for real (below).
+**Ailments from hits** (`ailmentDamagePerSecond`, 2026-11-22): a hit planned on ignite, bleeding or poison scores its
+hit plus the ailment it leaves. The ailment is a share of the plain hit (before crits): ignite 90% of the fire damage
+per second for 4 seconds, bleeding 70% of the physical, poison 30% of the physical and chaos for 2 seconds (the game's
+base rules; checked against Path of Building's constants, nothing read from it). Only the strongest ignite and bleed
+deal damage, so they don't grow with hit rate; poisons stack with it. Lines about the ailment, damage over time
+multiplier and faster ailments scale only that part, penetration only the hit, and Critical Strike Multiplier never
+reaches the ailment: crits help it only through "from Critical Strikes" lines and Perfect Agony. **Perfect Agony**
+uses the crit multiplier as the ailments' damage over time multiplier, crits deal no extra hit damage, and only crits
+inflict ailments: stacking poisons scale with crit chance, a single ignite or bleed is up while a crit lands within its
+duration, and a plan that doesn't crit leaves none (nor the "against bleeding enemies" lines that need one). **Crimson
+Dance** counts 60% of the bleeds the hit rate could keep up, never more than 8, each at the keystone's 50% less and
+without Aggravated bleeding: few setups keep the stacks through a fight, so this is our cautious estimate. Bleeding's
+bonus against a moving enemy isn't counted (bosses mostly stand), and the chance to inflict the ailment and
+"increased duration" lines aren't read yet: a planned ailment is taken to land on every hit.
+**Minions** (2026-11-22): **Offerings** (Flesh, Spirit, Bone) are buffs a minion build can run. Their lines count at
+75% (`OFFERING_UPTIME`, our estimate: each recast needs a corpse and a cast), and the first Offering also takes a
+socket for a gem that makes corpses (Desecrate or Unearth), which bosses don't leave. Bone Offering's block helps only
+the minions, whose survival isn't scored, so it is never chosen. Necromancer's "Your Offerings also affect you" isn't
+counted. **Raise Spectre**'s minion types in the game files are those of every monster it can raise, so a spectre is
+planned as one kind: the first support that only attackers or only casters take decides, and the other kind's
+supports and lines no longer reach it. Totem, trap, mine, channelling and warcry spectres are left out (few of them).
+The spectre's own damage stays its bare skill, as for every skill (scaling is measured against it), so which monster
+you raise is up to you. Minion **cast speed** now reaches minions that cast (Skeleton Mages, spell spectres) and attack
+speed those that attack. **"Deal no ... Damage"** (Brutality, Void Manipulation, Starforge and others) loses the damage
+of those types, converted or gained as extra included: before, Brutality beside Added Fire counted both.
+**Accuracy** (`accuracyOf`, `hitChanceOf`): an attack lands with chance 1.25 x accuracy / (accuracy + 937.5),
+from 5% to 100%. The 937.5 is a quarter of 3,750, the player's report that 3,500 to 4,000 accuracy usually hits
+an endgame boss every time. Accuracy is 2 a level (level 92), 2 per Dexterity, the gear's (600 assumed, or the
+solved gear's lines and 300 from the weapon) and the pieces' lines. Spells, minions and unevadable hits (Resolute
+Technique) always land, and the bare skill that scaling is measured against does too, so a miss costs an attack
+as it would beside a spell. That makes crit or not a whole-build choice with accuracy in it: Resolute Technique
+gives up crits for every hit landing, Precise Technique's 40% more holds when accuracy is above life, and an
+Inquisitor's crit penetration still argues for crit.
+Damage can't be compared between a minion, a spell and an attack, so offence is measured as how far the pieces scale
+the bare skill. Score = scaling^0.5 x defence^0.5 x clear^0.15 (damage times effective health, as players weigh a
+build), times 0.88 when the skill needs an attribute the class doesn't start near. These are indexes for comparing
+builds, not DPS.
+
+**Effective HP** (`defenceOf`): the build's pool over the share of a reference hit it takes, divided by the same
+for a character with nothing defensive but gear (so 1 is "gear only"). All the numbers are our estimates:
+- the hit: 10,000 damage from a pinnacle boss, half physical, 40% elemental, 10% chaos, half of the hits attacks;
+  monster accuracy 2,000. poe.ninja's sampled top characters survive a median largest hit of about 13,000 (10%
+  under 5,900), so this is a hit a ready build must take;
+- the pool: 1,250 life at level ~92, plus rare gear, tried four ways and the best kept: life bases (+700 life and
+  3,000 armour, evasion or half of each) or energy shield bases (1,600 ES before increases). The build's own life,
+  ES, armour and evasion lines scale these;
+- mitigation: armour as the game computes it (armour / (armour + 5 x the physical part), up to 90% with physical
+  damage reduction); elemental resistances taken as capped at 75% plus maximum resistance lines (up to 90%), then
+  elemental damage reduction; chaos resistance 20% from gear plus its lines; damage taken lines by type;
+  endurance charges (3 plus added maximum, 4% physical reduction each) when the build has a way to gain them;
+- avoidance at its expected value: the game's evasion formula against attacks, block (a shield's own 25% included,
+  up to 75% plus maximum block), spell block, suppression (half the damage of a suppressed spell, more with prevent);
+- recovery within a second: regeneration, leech (each 1% leeched recovers about 4% of life a second while hitting,
+  up to the 20% cap; not for minion or damage-over-time builds), life on hit at three hits a second, the life flask
+  (the data's best, Divine Life Flask: its life over its duration, raised by "increased Life Recovery from Flasks";
+  not with Chaos Inoculation or Vaal Pact), energy shield recharge (33.3% of energy shield a second, the game's
+  rate, for the share of a fight you go unhit long enough for it to start: 15% at the base delay, more with a faster
+  start, up to half; always when recharge can't be interrupted; to life with "recharge applies to life"), and recoup
+  (three quarters of it lands in time, and it can at most double the pool);
+- utility flasks (wiki `flasks` and `item_buffs` tables): up to four, fewer when unique flasks take slots, picked
+  like any piece. Each one's buff counts at its uptime: duration x charges gained a second / charges per use, at most
+  always, with 2 charges a second assumed in a fight (our estimate) plus "Flasks gain N Charges every M seconds"
+  lines; increased flask duration, flask charges gained and flask effect lines raise it. Minions don't drink them;
+- keystones: Chaos Inoculation (life 1, chaos immune), Blood Magic (no mana; buffs reserve life, so the reserved
+  share of life isn't there to take hits), Eldritch Battery and "bypasses Energy Shield" (ES isn't pool), Iron
+  Reflexes, Mind over Matter (40% of damage from mana: up to two thirds of life more pool, if the unreserved mana is
+  there), Vaal Pact (no regeneration), no helmet (gear pools 15% lower).
+- mana and reservation: maximum mana is 34 + 6 a level at level 92, 1 per 2 intelligence, the pieces' and solved
+  gear's mana lines (150 more with the fixed gear figures). Each aura, herald or reserved buff reserves its level 20
+  share times 100 / (100 + reservation efficiency): the pieces' efficiency lines (a herald-only line counts for
+  heralds; lines under a condition don't count) plus 10% assumed for what isn't planned (an Enlighten, cluster
+  jewels, implicits; rare gear can't roll it). Mana can be reserved up to all of it: what is left has to pay for
+  the main skill (the mana upkeep, below), and the score decides how much that is worth. Unreserved mana feeds Mind over Matter and Archmage (its 35% more is read at 1,000 unreserved mana and
+  scales with the build's own, up to 8 times). Transfiguration of Mind (Divine Guidance) adds 30% of increased
+  maximum mana as increased damage, Transfiguration of Body the same of increased life to attacks (GGG's tree text).
+  Mana and life are two pools: Petrified Blood always reserves life (its gem protects the lower half of life), and
+  with Blood Magic everything does; life holds at most 90%. Petrified Blood keeps life at low life (50%; "on low
+  life" lines then always hold), and its lower half loses 40% less to a hit at once, 81% of that over 4 seconds, a
+  quarter within the one-second window (level 20 gem text). **Eternal Blessing** is offered as its own buff for
+  each aura it supports: the aura reserves nothing and has 19% more aura effect, it takes two sockets and the
+  support's strength, only one can be on, and while it is, buffs reserving mana are disabled, so only life-reserving
+  ones join it (Blood Magic, Petrified Blood). The buffs are chosen twice, with and without a Blessing aura, since it
+  is often the best single buff but can lose to a set of reserved auras. **Flat reservations** (2026-11-14): Clarity,
+  Vitality and Precision reserve an amount, not a share (poewiki's `mana_reservation_flat` at level 20: 279, 233
+  and 186), taken from the build's own pool after efficiency; they weren't offered before. **Arrogance** is offered
+  as its own buff for each aura it supports, like Eternal Blessing: the aura reserves life instead of mana at the
+  support's 201% multiplier, with 19% more aura effect, in two sockets. The usual use, a player's report: an
+  Eternal Blessing aura plus Precision on Arrogance (about 340 life after the assumed efficiency), whose accuracy
+  an attack build tops up to a full hit chance with an accuracy line or a tree cluster. Life reserved by
+  Arrogance doesn't put the build on low life (a low-life setup isn't modelled). Eldritch Battery's reservation
+  from energy shield isn't modelled.
+- **mana upkeep** (2026-11-13): each use of the main skill costs its gem's level-20 cost (poewiki's skill levels)
+  times each linked support's cost multiplier (Elemental Focus 130%, Lifetap 300%), plus Archmage's 5% of unreserved
+  mana before the multipliers, more or less by cost lines (Inspiration 34% less) and divided by 1 + cost efficiency.
+  Uses per second: attacks at the weapon's rate, casts at 1 / cast time, both times the build's speed; totems 0.2 a
+  second (placements), brands 0.5 (recasts), minion skills none (our estimates). Mana comes back from regeneration
+  (1.75% of maximum mana a second, plus "% of mana per second" lines, times increased regeneration, plus flat), mana
+  leech while hitting (each 1% recovers 4% of the pool a second, up to the 20% cap; a line's damage type and
+  attack/spell scope must reach the skill), mana on hit (once per use) and on kill (half a kill a second). Without
+  solved gear 80% increased regeneration stands in for an amulet's and rings' rolls, without a planned tree 60% for
+  its nodes. Over a 20-second fight the unreserved mana carries the first uses and what comes back the rest; the
+  share of the fight the skill keeps going scales its damage, and a build that can't pay for one use from what isn't
+  reserved gets 1% of it. Skills paid with life (Lifetap, Transfusion, Blood Magic) spend at most a quarter of life
+  before regeneration, life leech and life on hit must keep up (not the life flask or recharge). So cost efficiency,
+  less cost, regeneration, leech of the right type and paying with life are worth exactly the casting they keep, and
+  the auras fill what the skill doesn't need. Up to 6 buffs (was 4); the buffs are chosen again on the finished build
+  and after the tree is planned, and a set chosen as if the skill cost nothing is tried with a tree planned for it,
+  which then buys the regeneration and efficiency that pay for it. Clarity, mana flasks, Eldritch Battery paying
+  costs from energy shield and "Attack Skills Cost Life instead of 10% of Mana Cost" aren't modelled.
+- **stacking**: a plan can commit to one stat from the start, the way players build a mana-stacking Archmage or an
+  evasion Dreamfeather build: mana (Archmage, Transfiguration of Mind), life (Righteous Fire, Transfiguration of
+  Body for attacks), energy shield, armour or evasion (pieces that read them as damage). A stat is offered when any of
+  the skill's possible pieces scale with it; the committed plan picks its supports, uniques, keystones, notables and
+  tree with the stat taken to be STACKING_EXTRA higher (3,000 mana or life, 5,000 energy shield, 30,000 armour or
+  evasion: what a committed tree and gear add, our estimates), then the gear is solved and the real figures decide.
+  It is planned only when its supports gain 10% or more at that extra over the plain plan, and kept for an ascendancy
+  only when it scores best there. Cards show it as "Stacks", with the reserved shares.
+Elemental resistance lines add nothing (gear caps them), and overkill leech, mana leech and mana recoup are not
+life recovery (fixed in the vocabulary: Slayer's Endless Hunger had read as 20% of all damage leeched, Timeclasp's
+mana recoup as life recoup). Flask mods (the prefix and suffix on a magic flask) aren't modelled. The page's "Why" shows the build's effective HP.
+
+**What a ready build looks like** (poe.ninja, the archetypes detailed in Allflame and Mirage, medians over each
+one's top characters, nearly all level 100), and what the generator takes from it:
+
+| | 10th percentile | median | 90th percentile |
+|---|---|---|---|
+| life (life builds) | 3,000 | 4,000 | 7,000-8,000 |
+| energy shield (ES and CI builds) | 4,000-7,000 | 9,000 | 16,000-17,000 |
+| effective HP (poe.ninja's figure) | 27,000-30,000 | 106,000-127,000 | 226,000-283,000 |
+| DPS (poe.ninja's figure, non-minion) | 76,000-220,000 | 3.1-5.3 million | 27-33 million |
+
+- **Life floor.** The lowest life medians among life archetypes are 2,300 to 3,000. A build under 3,000 life (or
+  under 5,000 energy shield when it is built on ES) has its effective HP cut by the square of how far short it falls;
+  life and ES aren't added for this, since a hybrid of the two is neither. Players' own rule of thumb for pinnacle
+  bosses is the same 3,000 life.
+- **Spell suppression is capped or skipped.** Of 50 Allflame archetypes with sampled defences, 28 run under 10% and
+  13 at 90% or more; nine sit between. Suppression counts at its chance squared: 100% is worth all of it, 50% a
+  quarter.
+- **Conditional defences.** A defensive line under a condition (a guard skill, "if you haven't been hit recently",
+  "while stationary") counts at its uptime and then at half again; players rarely prefer an inconsistent defence over
+  a weaker steady one. Conditions that hold for a whole boss fight (per charge, against rare or unique enemies,
+  nearby enemies, recently used a skill, fortified, enemy cursed, during a flask) aren't discounted.
+- **Attack DPS** is estimated on the sheet (before enemy resistances, as poe.ninja shows it): the endgame weapon
+  base with the most physical DPS for the build's weapon type (wiki `weapons` table: Legion Sword, Royal Axe, Gavel,
+  Imperial Claw, Sai, Imperial Staff, Citadel Bow, Kinetic Wand), with our estimate of a good rare's local modifiers
+  (170% increased physical damage, flat physical about 32 one-handed or 48 on a staff or bow, 20% attack speed, 20%
+  quality) and about 30 flat attack damage from other gear, times the skill's effectiveness and attack speed
+  multiplier and the offence index's own increases, more multipliers, crit, gem levels, speed and totems. It is shown
+  in "Why" and stored as `dps`, but not scored: against poe.ninja's DPS for the same archetypes (Allflame's 14 most
+  played hit attack builds) it is about a fourteenth (median ratio 0.07, from 0.01 to 3.8); jewels and cluster jewels
+  barely moved it (Cyclone of Tumult Slayer 1.29 to 1.34 million), since they take tree points that went to similar
+  nodes and the planner spends them on the score, not on DPS alone. poe.ninja's medians are
+  each archetype's top 100 characters by level, far better geared than a good rare, and the estimate leaves out
+  jewels, cluster jewels, unique weapons and the multipliers the vocabulary doesn't read; where it comes out
+  higher, poe.ninja's figure is a trigger set-up's main skill, not its damage. A floor like players' "1 million DPS
+  for pinnacle bosses" would need the estimate to be right within a factor of two first. Spells, minions and damage
+  over time get no figure yet.
+
+**Composing** (`planSkill`, `composeForAscendancy`): per skill, for each weapon it could use, five supports are
+added greedily (each the one that raises the score most), and shortlists of the uniques and keystones that help it
+are made; the best two weapons go on. Then for each of the 21 ascendancies: up to four notables (two for the
+Ascendant and Reliquarian, whose borrowed notables are weaker), auras and heralds within the mana the skill doesn't
+need after efficiency (see mana and reservation and mana upkeep above) and one curse, up to four uniques from the shortlists, then the supports
+again with the rest in place. The supports are also tried first, with the reserved buffs out and chosen again after,
+so a support that wants unreserved mana (Archmage) isn't shut out by auras picked before it; the better build is
+kept. A class tree, planned before the buffs, takes them to reserve 60% (our estimate), so Blood Magic doesn't look
+like free life. An aura's lines reach your minions too; a herald's buff is yours alone. A curse counts at 90% of
+its value, our estimate for the time a cast curse isn't up (bosses take curses at full effect since 3.20). Curses that are damage skills
+of their own (Bane, Hexblast) aren't picked as a curse. Hands and slots are respected (no two-handed weapon with a shield, two
+rings, one helmet). A piece that adds under 1.5% isn't kept. `scripts/generate_builds.mjs` runs this for 355 main
+skills x 21 ascendancies and keeps each skill's five best ascendancies plus every pairing people play.
+
+**Two scores: power and value.** The *power score* is the original plan: every piece chosen for what it adds,
+prices never seen. Fit, ranking and calibration use it. The *value score* comes from a second plan of the same skill
+and ascendancy, whose pieces are chosen with prices: the score divided by, per unique, 1 + 0.04 x ln(1 + its price in
+Divines). That is our estimate of what players pay for power: a 1-Divine unique has to add about 3%, a 10-Divine one
+about 10%, a 100-Divine one about 20%. A unique poe.ninja doesn't list counts as 20 Divines, since hardly anyone sells
+it. Each kept build stores its value plan beside it (`value`: its own pieces and tree, its power as `score`, its
+`value` and the uniques' `cost`); when it picks the same pieces, the power plan's tree serves both. The page has a
+Power plan / Value plan switch; the value plan's cards say how much of the power plan's power they keep.
+Prices come from `scripts/fetch_unique_prices.py` -> `.cache/ninja/unique-prices-<league>.json`, a cache, not shipped:
+poe.ninja's unique prices for the running league, priced like the Budget question (a unique listed several times is
+its unlinked line with the most listings), refreshed once a day. Between leagues poe.ninja's economy can drop a league
+its build data still lists (Allflame on 2026-11-11); the prices then come from Standard, and the output says so.
+Without the file there is no value plan. poe.ninja's build counts never enter either score.
+
+**The passive tree** (`public/buildtree.js`, data in `tree-poe1.json` from GGG's tree export): from the class's
+start node, the planner repeatedly takes the target (a notable, a keystone, or a small node worth having) with the
+best score gain per point, counting the small nodes on the path to it, until 110 points are spent (a level ~92
+character with every quest point) or nothing left gains at least 0.04% a point. Every node's stat text is read by
+the same vocabulary (94% of small-node lines, 86% of notables). Gains come from the generator's own scoring:
+effects are grouped by everything but their number, each group's gain per point of value is measured, and measured
+again every 10 points; keystones change rules, so each is scored exactly. Keystones therefore come only through the
+tree, at their real distance from the class's start: Chaos Inoculation is cheap for a Witch, far for a Marauder.
+While ascendancies are compared, one tree per class serves its three ascendancies; each kept build's tree is then
+planned again with all its pieces in place (`finalizeTree`), which is also what the page does when a card's "Why"
+is opened, so both agree. **Masteries** are targets too: a mastery costs one point once a notable of its cluster
+is taken, so the planner weighs the path to the nearest unlocking notable plus the mastery's best option (each
+option once per tree, as the game allows), and scores options exactly like keystones, skipping those that can't
+change the score. Before a step is taken, its real gain is measured once; if it's far below the estimate, the
+estimates are stale and are all measured again (lazy greedy). A keystone changes how everything after it is worth
+(Elemental Overload turns a crit build into a non-crit one), so for the trees it keeps the generator also plans
+once without each keystone the tree took and keeps the better tree. **Jewels** are planned with the tree. Every socket the planner can reach is a
+target worth what goes in it, scored exactly: the build's rare jewel (the three jewel modifiers from the wiki's
+`mods` table, domain 10, that raise this build's score most, at most two prefixes and two suffixes, at their middle
+roll: our estimate of a good rare jewel), or, in one of the six outer sockets, a large cluster jewel (8 passives). A large cluster's
+types, small passives and which notables each type can roll come from GGG's game files (`PassiveTreeExpansionSkills`
+and the spawn weights of the `AfflictionNotable` mods; the notables' stat text from the wiki's `passive_skills`); one
+gives its small passive on three small passives and its type's three best notables for the build, for 8 points inside
+it (our estimates), and a build runs at most two. The card lists each socket's jewel; a jewel can't hold two modifiers that change the same stat.
+
+**The tree view** (`public/buildtreeview.js`): opening a card's "Why these pieces" draws the whole passive tree as
+SVG with the build's nodes, links, chosen masteries and jewel sockets lit (rare jewels green, large clusters purple),
+like poe.ninja's or a tree planner's view. Positions come from GGG's tree export: `scripts/build_sources.py` works
+each node out from its group's centre, its orbit's radius and its slot (orbits of 16 and 40 slots use the game's
+uneven angles), and links between nodes on the same orbit of a group are drawn as arcs. Drag to move, wheel or the
+buttons to zoom, "Fit build" and "Whole tree" to reset; hovering a node shows its name and GGG's own wording of it (the tree export's stat lines), a socket its
+jewel and a mastery the chosen option. The zoom of each card is kept while the page redraws. Ascendancy nodes aren't
+drawn (the card lists them). A socketed large cluster is drawn as the game lays out an 8-passive one with 3 notables:
+12 places 30 degrees apart round a ring beside its socket (GGG's export places the ring through the socket's proxy
+node, the entrance), the two inner jewel sockets at places 4 and 8, the notables at 6, 10 and 2 and the small passives
+at 0, 7 and 5, all allocated and linked round the ring (Path of Building's cluster tables give the same places; a
+check). Hovering one names the notable or reads the small passive. Drawing it showed the planner had counted four
+small passives where the game has three; it counts three now. Medium and small cluster jewels
+inside a large one and abyss jewels aren't planned.
+
+**Timeless jewels, keystone first.** A timeless jewel in a socket conquers the passives in its radius; a keystone
+there becomes one of its conquerors' keystones (Lethal Pride's Strength of Blood, Glorious Vanity's Divine Flesh,
+Militant Faith's Inner Conviction...). The planner models that keystone and nothing else yet:
+- Data, all public: the conqueror keystones and their stat text from the wiki's `passive_skills` table (read by our
+  own vocabulary, like every keystone), the jewel each family comes in from its "Passives in radius are Conquered by
+  the ..." line in the wiki's `items` table, and the radius from GGG's game files (`PassiveJewelRadii`: Large is
+  1,500 game units). GGG's tree export is drawn at 1.2 times those units since 3.16, so the Large radius is 1,800 on
+  the tree (Path of Building's radius tables, 960 / 1,440 / 1,800 for 800 / 1,200 / 1,500, agree; a check, not the
+  source). 19 of the 21 main-tree sockets reach a keystone. Keystones the tree has anyway (the wiki also files
+  Glancing Blows and three others under a family) and the four Abyss ones, whose jewels aren't "Historic" uniques,
+  are left out: 17 keystones over six jewels.
+- Planning: the build's three best conqueror keystones are offered at any socket with a keystone in its radius. The
+  cost is the path to the socket and to that keystone, which must be allocated and whose own effect is replaced, so
+  it isn't counted. A rare jewel already socketed can be swapped for a timeless one (the planner fills sockets
+  early), and a keystone the tree already holds can be conquered; both are scored exactly. One per tree: timeless
+  jewels are "Historic", limited to one. The card's jewel line names the keystone it conquers, and the tree's
+  keystone list shows the conqueror's keystone in its place.
+- What the jewel does to the other passives in its radius came later (see "Timeless jewels' radius" below). Its
+  price in the value plan isn't modelled. A Fireball Elementalist takes Militant Faith for Inner Conviction; a
+  Boneshatter Juggernaut doesn't, since the only sockets near its keystones cost more points than the keystone is
+  worth to it.
+
+**Radius jewels** (`scripts/radius_jewels.py`, `public/buildradius.js`, 2026-11-26). A unique jewel that works on the
+passives in its radius is placed with the tree, not worn: what it is worth depends on its socket. Timeless jewels
+reuse this (see "Timeless jewels' radius" below).
+- Data, all public: each jewel's radius and limit from the wiki's `jewels` table, and the sizes from the game files
+  (`PassiveJewelRadii`: Small 800, Medium 1,200, Large 1,500 game units, 960 / 1,440 / 1,800 on the tree; each size's
+  ring for Thread of Hope). The radius lines become rules, and those lines are no longer read as stats of their own
+  (Might of the Meek's "50% increased Effect" was a stat nothing used). A rule's stat ("instead grant: Minions take
+  20% increased Damage") is read by our vocabulary; a rule with a line it can't read fully is dropped, and a jewel
+  with no rule left stays an ordinary unique (Combat Focus, Unending Hunger, Inspired Learning).
+- The rules: transforms (Healthy Mind's increased Life to increased Mana at 200%, Energy From Within, Energised
+  Armour, the six attribute jewels like Brute Force Solution, which move "+X to all Attributes"' share too), Lioneye's
+  Fall (melee and melee weapon tags become bow), Might of the Meek (small passives at 150%, notables nothing),
+  Unnatural Instinct (allocated small passives nothing, the unallocated ones' bonuses granted), Fevered Mind and the
+  Covenants (notables give the jewel's line instead), The Light of Meaning (each passive also grants its line; one
+  version per line), the Dreams and Nightmares (a passive with the element's resistance also grants the charge chance
+  or block at a share of it), Tempered and Transcendent Flesh, Mind and Spirit (lines per 10 of the attribute on
+  allocated or unallocated passives, and "-1 Strength per 1 Strength"), and the free-allocation jewels below. A rule
+  changes small passives and notables; attributes are counted on the passives' own lines, before any rule.
+- Free allocation: Intuitive Leap (Small radius), Thread of Hope (one version per ring) and Impossible Escape (one
+  version per keystone, its Small radius round that keystone, from any socket) let the tree take the passives in
+  their area without a path, a point each. Such a passive connects to nothing: the planner never paths on from it.
+- Planning: a radius jewel at a socket is estimated from the measured gains, like any node (its own lines, what each
+  allocated passive in its area gives with it less what it gives now, and what it adds from the area as a whole), and
+  the step chosen is then scored exactly; a jewel whose exact gain falls far below its estimate is set aside until
+  the next step. Once placed, every passive in its area is valued as the jewel makes it, so the tree grows towards
+  what the jewel improves. A free-allocation jewel is worth the best passives of its area, taken in the same step. A
+  rare jewel already socketed can give its socket to a radius jewel. One of each item, unless its limit allows two.
+  The build's list is kept short: jewels whose rules change passives are always tried, jewels that only add stats
+  when those stats help, and of Impossible Escape's and The Light of Meaning's versions the three best.
+- The card names each radius jewel; the drawn tree shows its area (dashed for free allocation) and the passives taken
+  without a path, unlinked.
+- Not modelled: the jewels' prices in the value plan (as for timeless jewels), the jewels the vocabulary can't read
+  (above), and minions' damage taken, which Fortress Covenant's notables add: it is read, but the defence index
+  covers the character only. A jewel without a limit is planned once although the game allows more. Planning takes
+  longer (8 Cyclone, Fireball, Spark... builds: 3.6 to 15 seconds each, 2.6 to 9.5 before; the full run 232 minutes,
+  201 before).
+- Effect on 8 sample builds' power score: Lightning Arrow Deadeye +32%, Cyclone Slayer +24%, Fireball Elementalist
+  +22%, Boneshatter Juggernaut +17%, Summon Raging Spirit Necromancer and Toxic Rain Pathfinder +4%, Spark Inquisitor
+  and Raise Spectre Necromancer -1% (the greedy plan's path changes). Fortress Covenant had been in 18 kept builds
+  without its notables' drawback.
+- A fix found on the way: swapping one rare jewel for a timeless jewel was scored without every rare jewel in the
+  tree (they share one effects list), so timeless swaps looked worse than they were.
+- Why Fortress Covenant sits in skills that aren't minion skills (the 133 of the 291 builds above): they are
+  minion builds all the same. 109 link Living Lightning Support (Barrage, Kinetic Rain, the Rain of Arrows and Rage
+  Vortex skills), whose minions do the build's damage, 17 are Dominating Blow (its Sentinels are minions) and 7
+  Holy Strike (its animated weapons). The jewel's notable drawback costs them nothing because the planner puts it
+  where its radius holds no allocated notable (a Barrage Inquisitor's has 7 small passives, a Kinetic Rain
+  Necromancer's 3), so only its own lines count, all minion ones: 40% increased minion damage and minion block.
+
+**Timeless jewels' radius** (`scripts/timeless_conquest.py`, `scripts/stat_descriptions.py`, the conquer rule in
+`public/buildradius.js`, 2026-11-27). A timeless jewel conquers every small passive and notable in its Large radius,
+not only a keystone. What each passive becomes depends on the jewel's seed; the planner has no seed, so it plans a
+typical one.
+- Data, all GGG's game files: each conqueror's rules (`AlternateTreeVersions`), its passives (`AlternatePassiveSkills`)
+  and additions (`AlternatePassiveAdditions`) with their spawn weights and rolls, and their wording from the stat
+  description files (`Metadata/StatDescriptions/*.csd`), read by our vocabulary like any line. `AlternateTreeVersions`'
+  columns have no names in the schema, so its file is read whole; the order of the columns comes from the rows
+  themselves (two flags, then the least and most additions for small attribute passives, other small passives and
+  notables, then the notable replacement weight). The script refuses to run if a known row no longer reads as
+  expected. No Path of Building data and no seed tables: those would be another program's results.
+- The rules, per conqueror: Lethal Pride (Karui) and Brutal Restraint (Maraketh) keep every passive and add to it:
+  +2 Strength or Dexterity on a "+10 to an attribute" passive, +4 on another small one, and a notable gains one of 27
+  additions. Glorious Vanity (Vaal) replaces every passive. Elegant Hubris (Eternal) empties the small passives and
+  replaces the notables. Militant Faith (Templar) replaces the attribute passives with Devotion, adds 5 Devotion to
+  the other small passives, and replaces one notable in five. Heroic Tragedy (Kalguur) adds Ward to the small
+  passives and replaces every notable.
+- A typical seed: each passive gets every replacement or addition it can roll, weighted by spawn weight and taken
+  at the middle of its roll, and a notable replaced one time in five keeps four fifths of each of its numbers. A
+  line without a number counts only where it is certain (an emptied passive gives nothing). A seed chosen for a build
+  is better than this. 95% of the lines are read; Devotion isn't in the vocabulary, so Militant Faith's
+  Devotion and its notables' Devotion conditions count as nothing.
+- A conquered passive belongs to its timeless jewel alone: no other jewel's rule changes it (The Light of Meaning's
+  "also grant", Might of the Meek, the transforms), whichever was socketed first. Thread of Hope and the other
+  free-allocation jewels still reach it, and Unnatural Instinct grants it as conquered. Attributes in radius
+  (Transcendent Flesh and the threshold jewels) are still counted on the passives' own lines.
+- Planning: the timeless jewel is a placement like a radius jewel. At a socket it is worth its keystone (if it
+  conquers one) and what it does to the passives already allocated in its radius. The step chosen is scored exactly,
+  and set aside when far below its estimate. Once it is placed, the passives round it are valued as conquered, so
+  the tree grows towards what it improves. Each jewel can also go where no keystone is wanted, offered when its
+  typical passives could help the build at all. Its radius may hold no allocated keystone but the one it conquers,
+  and once it is placed the other keystones in it are left alone (they would become the same conqueror's keystone).
+  A swap of a rare jewel for a timeless one is now found at each measuring, like the radius swap, not at every step.
+- Effect on 5 sample builds' power score, against the same code without the conquest data: Fireball Elementalist
+  +3.3% (Brutal Restraint's Dance with Death, guarded by the Garb of the Ephemeral guardian), Boneshatter Juggernaut
+  +2.6% without one (the greedy plan's path changes), Cyclone Slayer unchanged, Lightning Arrow Deadeye -2.9% (it had taken Glorious Vanity over three notables
+  whose loss wasn't counted), Barrage Inquisitor +1.4% (Glorious Vanity moves to a socket with only small passives in
+  its radius).
+
+**The review.** Each build is then looked up in poe.ninja's per-ascendancy skill counts (every count down to one
+character, from the searches the archetype data already makes): **nobody** (maybe our reasoning missed something,
+maybe a find), **a handful** (1-9), **a working niche** (10-200: what the view hunts for), established (201-1000),
+meta. Ideas are ranked by *fit*, how much better the ascendancy suits the skill than that skill's typical
+ascendancy, blended with the build's own score.
+
+**Calibration.** `generate_builds.mjs` checks the generator against players: for each skill with 100+ players, is
+the ascendancy most of them pick among the generator's three best for that skill? On 2026-11-12, on the power
+score: 46 of 137 (34%; picking at random would get 14%), the same before and after the Burning Damage fix (9 of 3,703
+builds moved, by about 1%). The 58 of 137 (42%) this paragraph gave on 2026-11-11 was stale: the committed
+`generated-poe1.json` from that day already recorded 34%, and rerunning that code gives 46. With the vocabulary's
+condition fixes, aura effect and timeless jewels (rerun 2026-11-12, 7,455 builds, 108 minutes) it is 49 of 137 (36%),
+up 3. Then impale lines started counting only as often as the build impales, "per Fortification above 20" lost
+its credit, and Rage was modelled (25 of its 30, scaled by Rage effect, for builds with a Rage source). That rerun
+(104 minutes) gives 48 of 137 (35%), down 1, and it changes which melee ascendancies rank: Champion is in a skill's
+generated top 3 for 6 skills (was 69), Berserker for 56 (was 3). Earthshatter's Berserker became a hit. Lacerate of
+Butchering's Champion and Shield Crush's Slayer dropped out: impale's own damage still isn't modelled, so an
+impale-stacking Champion now ranks too low, and Berserker pushes Slayer out of the top 3. Ranked by the value plan
+instead it was 59 before these reruns, which don't print it. The value plan costs the median
+build 2.6% of its power (a tenth of builds 14% or more, mostly by dropping Skin of the Lords and The Utmost, which
+poe.ninja doesn't list); the uniques' median cost falls from about 20 Divines to 0.1. Defences, Righteous Fire and self buffs, then bloodlines and
+sockets, brought it to 44 and then 45 of 138 (33%). Solving the rare gear (below) first dropped it to 37 (27%): the
+uniques were still chosen against the fixed gear figures, so a caster kept a unique shield where a rare spell shield
+(+1 to its spell gems, spell damage, spell critical strike chance) beats it, and the classes without that unique
+outranked it (Hierophant was in the top 3 for 3 of the 12 skills its players favour it for). Now each unique is
+weighed against the rare item that would take its slot, and the rerun (2026-11-13) gives 45 of 138 (33%) again:
+Hierophant 8 of 12, Deadeye 9 of 10, Assassin's spells back in the top 3. Real mana and reservation (2026-11-13,
+see "mana and reservation") give 42 of 138 (30%), down 3, for a reason: Duelist and Marauder class trees had taken
+Blood Magic as free life, which then left their builds without auras. Now they run them (Tornado Shot: Gladiator 57
+to 75, Juggernaut 44 to 72, Deadeye 67 to 69), and Deadeye falls from 9 of 10 to 3: its lead was partly that bug,
+and its own strengths (extra projectiles count only for clear) aren't all modelled. Necromancer rises from 2 of 8 to
+6, Hierophant to 9 of 12; Blood Magic leaves the most used keystones (34% of builds before) and Mind over Matter
+falls from 62% to 19%. Eternal Blessing, Petrified Blood, separate life and mana pools and stacking commitments
+(same day) give 43 of 138 (31%), up 1: 459 kept builds commit to mana stacking (none to the other stats: Righteous
+Fire and the defence-to-damage uniques are already planned for by the plain plan) and 774 run a Blessing aura;
+Petrified Blood is never chosen, since holding life at half only pays with low-life lines. Archmage with an unreserved
+pool moves casters toward Guardian (in the top 3 for 133 of the 356 skills, was 76; 3 of the 3 skills its players favour) and
+Hierophant, and Elementalist falls from 7 of 19 to 4 (Arc, Cold Snap, Vortex). The mana upkeep (2026-11-13, see "mana upkeep"; 7,476 builds, 66 minutes) gives 41 of 138 (30%), down 2: the median build now reserves 91% of its mana (68% before; 2,112 builds 90% or more, none before) and 3,303 of the 3,421 with a costed skill pay for it in full. Casters gain top-3 places (Elementalist 33 to 73, Necromancer 37 to 61, Trickster 14 to 33) and melee loses them (Slayer 112 to 73, Gladiator 115 to 79, Champion 32 to 12), so some melee skills whose players pick Slayer or Juggernaut drop out; mana leech and Archmage's cost now count, and Archmage no longer pays for a mana stack. Accuracy (2026-11-14, see "Accuracy"; 7,476 builds, 82 minutes in 19 worker threads) gives 43 of 138 (31%), up 2: Resolute Technique is taken by 48 kept builds (none before) and Precise Technique by 382 (426 before; its accuracy condition waits for the next mechanics rebuild). Among attack skills' top 3 places Juggernaut gains most (19 to 49, Undeniable's accuracy) and Slayer gains (63 to 74), while Berserker (118 to 95) and Inquisitor (39 to 17) lose. The 3.30 data (patch 3.30.0.1.4, same day) keeps 43 (31%), with Precise Technique's accuracy condition now read (17% of kept builds). Flat reservations and Arrogance (same day, 88 minutes) give 46 of 138 (33%), up 3: Precision runs in 790 kept builds, 418 of them on Arrogance (166 beside an Eternal Blessing aura; the median Arrogance build reserves 340 life), 494 of the 1,793 attack builds use it, and Clarity runs in 133. Skills a unique grants, Unholy Might and Chaotic Might, and the 3.30.0.4 data (2026-11-22; 7,476 builds, 94 minutes) give 49 of 138 (36%), up 3: the tree export's new link markup had left about 60 passive lines unread, and once they are read Saboteur's top-3 places go from 18 to 57. Unholy Might's conversion and wither take Necromancer from 41 to 80, while Guardian (163 to 129), Elementalist (97 to 83) and Assassin (52 to 35) lose places. Summon Phantasm (Soulwrest) is kept in 5 builds, all with its five supports in the staff. The tree, mastery and ascendancy reading audit with Skin of the Lords split into one version per keystone and gear rounds (2026-11-23; 3,782 kept builds) gives 53 of 138 (38%), up 4: wrapped lines, Area of Effect scopes, any-of weapon tags, curse and aura effect names and about 250 tree lines that were read as the wrong stat are now read correctly. Skin of the Lords was carrying all 49 keystones at once and sat in 49% of kept builds; its versions now take one keystone each and Iron Will and Precise Technique lead at 23% each. Replica Rumi's Concoction drops out of the top uniques (50% before), and The Pariah falls from 64% to 47%. Keystones that change what buffs reserve (Supreme Ego, Blood Magic) are refused when they would push the chosen buffs over the reservable limits, in the composer and in the tree, which plans again without them; before that 13 kept builds were over. Core-only bloodlines, Dance with Death only beside crit immunity (Brass Dome, or an Animated Guardian in Garb of the Ephemeral) and no Hidden Potential (2026-11-25; 3,769 kept builds, 113 minutes) give 52 of 138 (38%), down 1: builds lose a Dance with Death they couldn't survive (4,414 mentions to 3,860) and the league-only Wildwood bloodlines. The caster weapon and dual wands came after this run. The rare weapons, no empty slots, socketed clusters and the audit of what every build wore (2026-11-25, see "What every build wore"; 3,778 kept builds, 171 minutes) give 47 of 138 (34%), down 5, and their reason is melee: Berserker's top-3 places fall from 95 to 54 and Juggernaut's from 93 to 66, while Slayer (28 to 51), Gladiator (32 to 50) and Assassin (36 to 51) gain from dual wielding and the solved weapons' crit. The misread items leave the most used (Haunting Memories 55% to none, The Pariah 49% to none, Bitter Heresy 26% to none). Two-handed melee weapons, the best plan of each weapon group, unique weapons with their own hands and the wiki's weapon class names (same day; 3,819 kept builds, 186 minutes) give 41 of 138 (30%), down 6, for a reason that is still open: with staves no longer pruned before the tree, staff block wins melee. 48% of kept melee builds hold a staff (8% the run before; players rarely do), and Guardian (250 top-3 places) and Inquisitor take Cyclone, Flicker Strike and Elemental Hit. A Cyclone Guardian on a staff blocks about 60% of attacks and of spells (37% from the tree's staff block, the rare staff's implicit and affixes, Glancing Blows, Bastion of Hope) and its defence index is 69.7, against 26 to 51 on the other weapons. Block counts at its average, unlike spell suppression, which counts at its chance squared because few builds sit between none and the cap. The weapon base's damage in the offence index and dual wielding's +20% block and 10% more attack speed (same day; 201 minutes) give 42 of 138 (30%), up 1: two-handed axes go from 9% to 16% of kept melee builds and one-handers fall (swords 15% to 8%), but staves rise to 53%, since their block comes from the tree and the staff's implicit and costs them only about 13% of a two-handed axe's base damage. Radius jewels placed by the tree (2026-11-27, see "Radius jewels"; 3,817 kept builds, 232 minutes) keep 42 of 138 (30%): 3,555 kept builds socket at least one, most often Thread of Hope (3,293), Impossible Escape (3,129), Unnatural Instinct (2,605) and The Light of Meaning (2,095), and the median power score rises from 73.9 to 82.1. Timeless jewels lose sockets to them (Glorious Vanity 1,589 to 567, Militant Faith 312 to 67, Brutal Restraint 1,396 to 1,319). Fortress Covenant goes from 18 to 291 builds, 158 of them minion skills, whose minions' damage taken the defence index doesn't count. Timeless jewels' radius (same day, see "Timeless jewels' radius"; 3,829 kept builds, 264 minutes) gives 37 of 138 (27%), down 5, and the median power score moves from 82.1 to 83.1. A timeless jewel now costs or gains what it does to the passives round it: Glorious Vanity falls from 567 to 151 builds (a typical seed replaces every notable it reaches), Militant Faith rises from 67 to 540 and a Lethal Pride without a keystone appears in 581 (its Strength on every small passive), Brutal Restraint stays (1,301); 2,575 builds hold one. Which ascendancies lost the five top-3 places isn't known: the run before wasn't kept beside this one. Every gear mod source and base item (same day, see "Every mod source and base item"; 3,836 kept builds, 271 minutes) gives 42 of 138 (30%), up 5: rares now beat most uniques, so Stasis Prison falls from 28% of kept builds to 5% and no unique is in more than 6%. The reading fixes that run showed (a typical seed's sliver of an Endurance Charge chance counted as keeping full charges, two-defence lines such as "Armour and Evasion" read as one, Shadowstitch's local defences read as global; 2026-11-28; 3,823 kept builds) give 47 of 138 (34%), up 5, the best yet. The median power score is 147.0 (83.1 before the gear change): the gear now carries influences, eldritch implicits, essences and veiled mods. Lethal Pride without a keystone leaves the top jewels (730 builds to 131) once its sliver of endurance stops giving full charges; Brutal Restraint is in 1,671. `npm run test:builds` fails if this falls
+under 25%. A full run takes about 80 minutes in 19 worker threads (the default, 60% of the system's 32; `--workers N` or GENERATE_WORKERS sets any count from 1 to the thread count), most of it planning trees. Known
+gaps, the next work: jewels, flasks, trigger set-ups, auras that act on enemies (Pride), impale's own damage, mana-
+stacking uniques as a set, and extra projectiles for single-target damage aren't modelled. Juggernaut (1 of the 12
+skills whose players favour it), Chieftain (0 of 11), Deadeye (3 of 10) and Elementalist (4 of 19) rank too low.
+Guardian and Hierophant may now rank too high: of the 138 tested skills, the generator puts Guardian in the top 3
+for 59 and Hierophant for 56, while players favour them for 3 and 12. Berserker (36, favoured for 2) too, probably
+because damage and defence weigh the same in the score and Berserker's are lopsided.
+
+### Rare gear
+
+With the crafting data built, the generator fills each build's rare slots with real affixes instead of fixed gear
+figures (`public/buildgear.js`). The slots are body armour, helmet, gloves, boots, belt, amulet, two rings, a
+shield or quiver when the weapon carries one, and every hand, less any slot a unique takes (a unique added
+after the gear was solved takes its slot too: `wornGearItems`). No slot is left empty unless a piece says so: a
+one-handed weapon without a shield is held twice (dual wielding: 15% chance to block attack damage and the "while dual
+wielding" lines, for attacks and spells alike), a staff or bow takes both hands and a bow has a quiver, and a
+two-handed unique (Starforge on a two-handed sword build) takes both hands, so no rare weapon is solved beside it. Spells used to be
+planned with no weapon at all as one of their choices ('none'), which left both hands empty; that choice is gone
+(2026-11-25). Each item gets up to three prefixes and
+three suffixes, one per modifier group, from the Crafting tab's modifier data. `scripts/build_gear_mods.py` reads each
+tier's text with the same vocabulary as everything else into `public/data/craft/gear-poe1.json`, which is generated
+locally like the rest of `public/data/craft/`.
+
+1. **Resistances first.** Every character ends the campaign at -60%, so fire, cold and lightning need gear to reach
+   their cap (75% plus maximum resistance lines). The affix that covers most of what is missing goes in first. Lines
+   from the build's own pieces count, and so does Tasalio's fire resistance shared at half with cold and lightning.
+2. **Attributes next.** Level 20 active gems ask for about 155 of their attribute and supports about 111; uniques
+   and the item bases have their own. The class's base attributes, the tree and the pieces are counted. A shortfall
+   costs 0.2% of the score a point, down to 0.8, so the tree and gear see each point they make up.
+3. **The rest by score.** Every affix that still fits is tried, and the one that raises the score most goes in, while
+   any does.
+4. **Uniques against rares.** The uniques were chosen against the fixed figures, so each one in a slot a rare item
+   can fill is taken out in turn, and that slot alone filled. The best change is kept while any helps, and a build
+   that lost a unique has its gear solved again in full. A Spark of the Nova Hierophant swaps Rathpith Globe for a
+   rare spell shield this way.
+
+The defence type (armour, evasion, both, or energy shield) is the one whose bare bases suit the build best. Base
+defences and requirements are our figures for typical endgame bases. Defence lines on an armour piece are local:
+they apply to its base, with 20% quality. Overcapped fire resistance, attribute stacking and resistance trades come
+from the real items. A spell build's weapon is solved on a caster base (Prophecy Wand, Imperial Skean, Void Sceptre,
+Eclipse Staff; with a shield whichever one-hander scores best; planned with wands, two caster wands, dual
+wielding: 15% chance to block attack damage and the "while dual wielding" lines), its implicit and requirements from poewiki and only
+its spell lines: the weapon's own attack lines (physical damage, attack speed, its crit chance, flat damage without
+"to Spells", life per hit, accuracy) are left out. **An attack build's weapon** (2026-11-25) is solved on its
+weapon type's endgame base, the one with the most physical DPS (Legion Sword, Royal Axe, Gavel, Imperial Claw, Sai,
+Kinetic Wand, Imperial Staff, Citadel Bow, Vaal Greatsword, Karui Chopper, Imperial Maul; with a shield whichever
+one-handed melee base scores best), with its damage,
+speed, crit, implicit and requirements from poewiki. Its local lines are what matter, so they are read as the weapon's
+own: increased and flat physical damage, attack speed and crit chance. The engine measures attacks against a
+reference rare on the same base (`REFERENCE_RARE_WEAPON`: 170% increased physical damage, 32 flat physical, half
+again two-handed, 20% attack speed, 20% quality), so the solved weapon counts as the share of that reference's
+physical hit it reaches, times its speed over the reference's, with its crit on the base's (`solvedWeaponFactors`,
+averaged over both hands when dual wielding; a unique weapon in a hand counts by its own hand). Its flat fire, cold,
+lightning and chaos damage is added attack damage, half of it when dual wielding (each hand hits half the time), and
+its accuracy lines replace the 300 assumed for the weapon. Lines about socketed gems count only on a body armour or a
+two-handed weapon, where the main skill's six-link is. Without a solved weapon a smaller allowance
+(SOLVED_GEAR_ALLOWANCE) stands in for its modifiers and power charges; with one only the power charges stay
+(SOLVED_GEAR_WITH_WEAPON_ALLOWANCE). **Gear level**, in the planner: budget (three
+tiers below the best an item level 84 base rolls), endgame (one below: the generator and calibration) or near-perfect
+(the best). Each rare on a card has a **Craft it** link that opens the Crafting tab with its affixes as targets, where
+it is planned and priced. Generation itself stays price-blind for gear. The generated file keeps each rare item as
+its base and affix ids (`storeGear`), and the page brings back the text and tiers from the gear data: with the text
+stored it was 27 MB, over Cloudflare Pages' 25 MiB file limit (`npm run test:builds` checks it). Without the gear data, the fixed figures are
+used and cards show no rare items.
+
+**Every mod source and base item** (2026-11-27). The solver used to take only the base pool's affixes on one plain
+base per slot. It now takes everything the Crafting tab's data has for the slot, within a crafter's limits:
+- Influenced mods (Shaper, Elder and the four Conquerors): at most two influences an item (an Awakener's Orb; one at
+  budget level, every one on an Astrolabe Amulet). Searing Exarch and Eater of Worlds implicits on body armour,
+  helmets, gloves and boots, one of each, never on an influenced item (eldritch currency needs an uninfluenced one).
+- Mods a crafter places: one bench craft, one essence mod, one veiled mod and one beast craft at most, and at most
+  one of them at budget level, two at endgame, all four near-perfect (`GEAR_LEVELS.maxPlaced`, our estimate of what
+  each level pays for). Fossil-only mods roll like the others.
+- Base items: every base of the slot from the crafting data, the best of each implicit (one plain base, Vermillion
+  Ring, Marble Amulet, Convoking Wand, Two-Toned Boots, Fingerless Silk Gloves...), with the wiki's implicit, defences
+  and requirements (armour pieces now use the real defences of their best plain base, not our fixed figures). The
+  Experimented bases change the prefix and suffix counts and scale their side's values (Helical Ring, Focused Amulet,
+  Astrolabe Amulet), as the Crafting tab does; a base whose implicit stops mods rolling (Cryonic Ring, Kinetic Wand)
+  is checked with the Crafting tab's own rule (`baseBlocks` in `public/craft.js`). Attack bases within 85% of the
+  type's best physical DPS are tried too, measured against the type's endgame base. The base is chosen on the
+  finished set: every base of each slot is tried with the item's affixes, the best kept, and the set completed again.
+- The fill estimates first: at each measuring every stat group the candidates carry is scored once and each affix
+  estimated as the sum of its lines (as the tree planner does); only the twelve best estimates are scored exactly.
+  Affixes bound to their item (local defences, a weapon's own damage, socketed-gem lines) are scored exactly at each
+  measuring. Without it the pools, ten times larger, made the solver about ten times slower; with it a build takes
+  about 1.3 times as long as before.
+- Reading fixes found on the way: the gear script dropped every field but tags, condition, requirement and socketed,
+  so "+1 to Level of all Raise Spectre Gems" counted for every gem and "Gain 10% of Physical Damage as Extra Fire
+  Damage" lost its source. "Mine Throwing Speed" and "Trap Throwing Speed" were every skill's speed. "per 16
+  Intelligence" lines (The Whispering Ice, Shaper's Touch, the Elder wand mod, 48 lines in all) were three stacks;
+  they now count the build's own attribute. "Recover 4% of Life when you Block" was a rate nothing used; it now
+  recovers at the build's block chance against one boss hit a second (our estimate). Conditions the items brought in
+  have their own uptime instead of "other"'s half: Soul Gain Prevention (a Vaal skill, not planned: none), Focus
+  (a quarter), a Pinnacle Atlas Boss in your presence (half, and steady for the defence index). A defence line with a
+  condition is no longer applied to its item's base as a local line.
+- The card names each rare's base and influences, and each affix's source (Shaper, essence, bench craft, an eldritch
+  implicit); the Craft it link carries the base item, influences and bench crafts.
+- Not modelled: the influenced and crafted mods the vocabulary can't read (113, mostly niche: reflect, socketed-gem
+  quality, conflux, ground immunities), and what a seed or a fracture costs: generation stays price-blind for gear.
+
+**Revisit gear** (each card, `public/buildrevisit.js`, `public/buildrevisitview.js`, 2026-11-23). A character is
+geared bit by bit, and what is worth buying moves with the economy, so a card's gear can be asked about again with
+today's prices. The work runs in the build worker, on the card's build with its planned tree.
+
+- **Upgrade a slot:** for one slot and a budget in Divines, the uniques that fit it and a rare at each gear level,
+  ranked by the card's score, with the cost and the gain per Divine.
+- **Unique jewels:** the unique jewels within a budget that add to the build. Jewels that work on the passives in
+  their radius aren't offered here: the tree planner places them (see "Radius jewels").
+- **Uniques vs rares:** every rare slot given its best unique at or under a price in chaos, against the rares as they
+  are, with both sides' cost.
+
+When a unique takes a rare's slot, the rares left are solved again, so the resistances and attributes that rare gave
+are made up elsewhere. The candidates are ranked first with a stand-in: the displaced rare's resistance and attribute
+affixes only. Then the best eight (three a slot for the whole set) get the full solve. In the whole set, a swap is
+taken only where the build still has its resistances and attributes met. Uniques are priced at poe.ninja's price.
+Rares are priced by the Crafting tab's own planner (`public/rareprice.js`), using that tab's prices (your overrides,
+the exchange, its estimates). It runs without fossils, which never came out cheaper on the endgame rares tried, and
+it takes 30 to 70 seconds an item. Items are priced one at a time in the background, and each price is kept for a
+day in the browser.
+
+**Bloodlines** share the eight ascendancy points (3.28 patch notes). Each bloodline notable is offered with the
+small passives on the path to it, at that path's cost, from one bloodline at most. Ascendancy notables cost 2; the
+Ascendant's and Reliquarian's borrowed ones cost 4, which keeps them at two. Unlocking a bloodline takes a boss kill
+per character; the generator treats them as unlocked. Oath of the Maji is taken with gloves and boots left without
+gems, which costs their sockets.
+
+**Sockets.** The main skill only has five supports in a six-link, which needs a body armour or two-handed weapon with
+six sockets. Kaom's Heart (no sockets) on a one-handed build leaves a four-link, and only the three best supports
+count. Fixed socket counts on uniques ("Has no Sockets", "Has 1 Socket") are read from their text, and buffs need
+free sockets after the main skill's links and four utility gems.
+
+### Where the game data comes from
+
+Public sources only, so anyone with this repository can rebuild it (`npm run builds:build`), gathered by
+`scripts/build_sources.py`. The rare-gear affixes come from the Crafting tab's data (Craft of Exile's public files,
+`npm run craft:build`), which every clone can rebuild too:
+
+| What | Source | How it's read |
+|---|---|---|
+| Keystones, notables, ascendancy notables, bloodlines, and which class each ascendancy belongs to | GGG's [passive tree export](https://github.com/grindinggear/skilltree-export), published for tool makers | Downloaded once a week into `.cache/skilltree/`. It is the authority on what is on the tree now: the wiki and the game files also keep removed and league-only nodes |
+| Gems: tags, attribute and level requirements, stat text, cast time, effectiveness and crit at level 20 | poewiki.net's Cargo tables `items`, `skill_gems`, `skill`, `skill_levels` | `scripts/poewiki.py`: pages of 500 rows a second apart, cached a week in `.cache/poewiki/`, backing off on 429. The wiki keeps a skill's level-independent values on a "level 0" row, used when level 20 has none |
+| Uniques: category, base, requirements, implicit and explicit stat text | poewiki.net's `items` table | The version that still drops stands for the item; legacy versions are dropped |
+| Unique jewels' radius and limit | poewiki.net's `jewels` table (joined to `items`) | The size word under the item's name ("Medium", "Variable" for Thread of Hope); the sizes and rings themselves from GGG's game files (`PassiveJewelRadii`, exported into `.cache/dat/poe1-jewel-radii/`) |
+| Keystones granted by timeless jewels | poewiki.net's `passive_skills` table | Only listed in `game-poe1.json`, so poe.ninja's keystone shares can be named; the generator doesn't pick them, since they need a specific jewel |
+| What timeless jewels do to the passives in their radius | GGG's game files (`AlternateTreeVersions`, `AlternatePassiveSkills`, `AlternatePassiveAdditions`, the stat description files) | Exported into `.cache/dat/poe1-timeless/` and `.cache/dat/poe1-timeless-files/` once per patch by `scripts/timeless_conquest.py`; a typical seed, not a chosen one |
+| Skill types and support rules | GGG's game files via `pathofexile-dat` (`ActiveSkills`, `GrantedEffects`, `ActiveSkillType`, `ItemClasses`) | Exported into `.cache/dat/poe1-skills/` once per patch. Also fill in gem tags the wiki lacks |
+| Rare gear affixes and base items (the gear solver) | The Crafting tab's modifier data, from Craft of Exile's public data files (`npm run craft:build`): every mod source and base item; each base's implicit, defences and requirements from poewiki.net's `items` and `armours` tables | `scripts/build_gear_mods.py` into `public/data/craft/gear-poe1.json`, not committed. Optional: without it the generator uses fixed gear figures |
+
+Requests carry a generic client name, nothing about who runs the script. `--refresh` on `build_game_data.py` or
+`build_mechanics.py` asks again before a week is up.
+
+### What people play (poe.ninja's archetypes)
+
+**Archetypes** are poe.ninja's own pairing of an ascendancy and a main skill. `scripts/fetch_build_meta.py` asks
+poe.ninja's search once per ascendancy, which counts that ascendancy's characters by main skill: every archetype
+with 20 or more characters and its population. Auras and Vaal skills (cast beside the plain skill) don't count as
+main skills. It then asks once per archetype for the 120 most played (80 in a past league): those answers aggregate
+every matching character (the uniques worn, keystones, support gems, auras, bloodlines, as shares) and give columns
+for the top 100 characters by level (life, energy shield, EHP, DPS, the damage split and whether the damage is a hit
+or over time). Searches don't return armour, evasion, suppression or block; `fetch_build_meta.py 120 5` opens 5
+characters per archetype for those, but that costs a request each and poe.ninja rate limits it (HTTP 429), so it is
+off by default. On a 429 the requests wait as long as poe.ninja asks (30, 90, 240 s), then stop sampling;
+`--cached` rebuilds from what is already in the disk cache without asking poe.ninja anything. Medians come from the
+highest-level characters, so they describe finished builds.
+
+**Since 2026-11-23 the script can't read new builds.** poe.ninja's `data/index-state` no longer lists the build
+snapshots, and its own builds page (Covens league) now searches through `api/protected/poe1/builds/<hash>/search`, a
+path meant for its site, which this script doesn't follow. `fetch_build_meta.py` stops with that message and leaves
+the meta files as they are (Allflame and Mirage, built 2026-11-11); the refetched index-state also means `--cached`
+has no snapshot list to rebuild from.
+
+**Reading the answers.** The search answer is protobuf. Its dimension values are indexes into name lists in
+poe.ninja's "NDIC" format (`builds/dictionary/<hash>`): a header with the entry count at byte 12, the block count
+at 28 and the size of the lengths at 32, an 8-byte table entry per block, each name's length as a varint, then the
+names (worked out from the files, 2026-11-10; `parse_dictionary` raises if the lengths stop adding up). The
+per-skill `mode` column is 0 for hits (Winter Orb) and 2 for damage over time (Righteous Fire).
+
+**Which leagues.** The running softcore trade league, plus each past one poe.ninja still lists whose address is its
+name. Exilecon qualifiers are SSF events and are left out. Ancestors is left out too: it used Phrecia's
+ascendancies, and poe.ninja answers a filter on an ascendancy nobody had with the whole league. An archetype played
+in a past league with 20+ characters is marked **Proven** and ranks a quarter higher.
+
+**Traits** (`public/builds.js`): damage types are those with 25%+ of the DPS, else the skill's tags; hit or DoT is the
+majority of the measured mode, else a guess from the skill's description and a short list; the pool is energy
+shield from 70% of life + ES, life under 30%, hybrid between; a defence layer counts from a median of 20,000
+armour or evasion, 90% suppression or 50% block. Delivery (spell, melee, bow, totem, mine, trap, brand, minion,
+trigger) comes from the skill's tags, with minions told apart by name and description because Absolution carries the
+Minion tag.
+
+**Budget.** The browser prices the uniques on poe.ninja through the same proxy as the Farming tab, and an
+archetype's cost is each unique's price times the share of its players wearing it: a build half its players run
+with Mageblood costs half a Mageblood. A unique listed several times is priced as its unlinked line with the most
+listings, so uniques whose mods set the price (Watcher's Eye) read as their common roll and the cost undercounts
+builds that need a specific one. Under 5 Divines is cheap, 5 to 30 medium, more is expensive.
+
+**The questions** narrow the archetypes in order: class, ascendancy, damage type, hit or DoT, playstyle, life or
+energy shield, defence layer, budget. Any can be skipped or changed from the chain; an option that would leave
+nothing stays visible but disabled, and changing an early answer drops later ones that no longer fit. The chain is
+kept in the link (`?b=class:Witch,ascendancy:Elementalist`) and in the browser.
+
+**The spin wheel** holds up to 12 archetypes that fit the answers so far, outside the 20 most played, with 40+
+characters, top characters at a median level of 95+ and 40,000+ EHP: niche but proven playable. With none left it
+falls back to every remaining archetype and says so.
+
+In the ideas view the wheel spins over a dozen of the best ideas that fit the answers and the player bands shown.
+
+Planned next: advice rules in our own words with sources, leveling suggestions, and links to the Farming cards a
+build suits.
+
+## Gold fee
+
+The fee comes from the game file `CurrencyExchange.GoldPurchaseFee`: a fixed gold amount per unit **received**.
+
+| Item | PoE1 | PoE2 |
+|---|---|---|
+| Chaos Orb | 15 | 160 |
+| Exalted Orb | 20 | 120 |
+| Divine Orb | 250 | 800 |
+| Mirror of Kalandra | 25,000 | 25,000 |
+| Rogue's Marker, Dead Man's Sulphur | 1 per 1,000 | – |
+| Lifeforce | 1 per 8 | – |
+
+The unnamed column 6 of that table flips the fee to "1 gold per N". That matches poedb's `1/1000`.
+Gold is the only friction on flips. It is what makes a doubled price on Orbs of Alteration not quite free money.
+
+## What the data shows (Allflame, 24 h to 2026-10-09 22:00 UTC)
+
+- **The Chaos/Divine gap is real and persistent.** Many items are systematically dearer in their Divine
+  market than in their Chaos market, and the gap holds in 23–24 of 24 hours. Orb of Alteration trades at
+  about 10 per Chaos but about 1,780 per Divine (0.10c vs 0.20c, +87%, 32k/h on the thinner side).
+  Valdo's Puzzle Box (+24%), Simulacrum (+37%), Fracturing Orb (+16%) and Horned Scarab of Bloodlines (+15%)
+  show the same pattern. Cause: people who hold Divines and want bulk pay a premium for convenience. The
+  flip is to buy with Chaos, sell for Divine, and convert back. The cost is gold, roughly 60–300 gold per
+  Chaos of profit.
+- **In-pair spreads.** Liquid markets often trade over a range of about 5–50% within the same hour
+  (Valdo's Box vs Divine: 0.5–1.0). Posting at both ends is the market-maker play the Maxroll flipping guide describes.
+- **Transfers through dead markets.** In four hours, about 3,100 Divines (around 1.1M Chaos) were paid for
+  35 Blighted Delirium Orbs worth about 11c each. 40,000 Stacked Decks went for 600 Orbs of Chance. Stock
+  was zero or near zero on both sides, so the orders matched the instant they were placed. This is how
+  wealth is moved between accounts (RMT delivery, mules) without a trade window. The Odd trades tab flags
+  these as "Instant".
+- **Fat-finger and bait fills.** In a thin market someone will sell 14 cards worth 28c each for 1 Chaos.
+  The integer-ratio UI makes "1 : 14" and "14 : 1" one misclick apart.
+- Single-trade extremes are noise. The day's lowest and highest Divine ratios were 40 and 900 Exalted on
+  PoE2. That's why the site uses the **median of hourly averages** everywhere and shows hourly-average ranges.
+
+## Caveats
+
+- This is history, not a live order book. Everything is at least an hour old.
+- "Profit / h" assumes you take all the volume of the thinner market. Treat it as a ceiling.
+- Spreads use per-hour min and max ratios, which can come from tiny trades.
+
+## Other tools seen
+
+- [timeolord/poe-arbitrage](https://github.com/timeolord/poe-arbitrage): Rust cycle scanner over the same
+  API, with an hourly GitHub Actions run and a static page. It models gold fees from poedb.
+- [Misyuk-T/poe2-currency-flip-tracker](https://github.com/Misyuk-T/poe2-currency-flip-tracker):
+  Vercel cron plus Supabase, hourly ingestion, entry and exit ranges.
+- [metaseonso/wraeclast-index#85](https://github.com/metaseonso/wraeclast-index/issues/85): an archive of
+  full PoE2 history (15.8k hours, 1.1 GB gzipped).
+- poe.ninja: its PoE2 currency pages are built on this exchange data. Its economy endpoints are documented at
+  https://poe.ninja/docs/api (public but with no stability promise), and past leagues are published as data dumps. The same
+  page calls the builds endpoints internal and not available for third-party use, and `scripts/fetch_ninja_targets.py` uses them.
+- [Maxroll: Flipping with the Currency Exchange](https://maxroll.gg/poe2/resources/flipping-with-the-currency-exchange):
+  in-pair and Exalted to Divine flipping, as players actually do it.

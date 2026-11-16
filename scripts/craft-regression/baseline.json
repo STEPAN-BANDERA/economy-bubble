@@ -1,0 +1,82 @@
+{
+ "note": "Plan costs (chaos) at the frozen prices. Written by scripts/craft_regression.mjs --update.",
+ "dataBuilt": "2026-10-11",
+ "items": {
+  "Kinetic Wand (mana, veiled chaos penetration, bench spell damage; crit multi, crit chance, attack speed)": {
+   "Best mix of everything": {
+    "name": "Best mix of everything",
+    "cost": 19162.820444173303
+   },
+   "Suffixes first": {
+    "name": "Suffixes first, then prefixes",
+    "cost": 19162.820444173303
+   },
+   "Prefixes first": {
+    "name": "Prefixes first, then suffixes",
+    "cost": 19389.507965702007
+   },
+   "Harvest reforges": {
+    "name": "Harvest reforges",
+    "cost": 62926.52260013656
+   },
+   "Chaos spam": {
+    "name": "Chaos spam",
+    "cost": 94549.97475041017
+   },
+   "Veiled Chaos spam": {
+    "name": "Veiled Chaos spam",
+    "cost": 160535.95315194875
+   },
+   "Alteration / Regal": {
+    "name": "Alteration / Regal",
+    "cost": 185038.49165029128
+   },
+   "Fossils": {
+    "name": "Fossils",
+    "cost": 74412.95559157738
+   },
+   "fosclicks": {
+    "name": "Fossils, fewest clicks",
+    "cost": 459540.67966250004
+   }
+  },
+  "Opal Wand (+1 spell gems, +1 chaos spell gems, veiled chaos damage; chaos DoT multi, DoT multi, bench cast speed)": {
+   "Best mix of everything": {
+    "name": "Best mix of everything",
+    "cost": 15512.260383648554
+   },
+   "Prefixes first": {
+    "name": "Prefixes first, then suffixes",
+    "cost": 16956.92436791808
+   },
+   "Suffixes first": {
+    "name": "Suffixes first, then prefixes",
+    "cost": 17033.386511647655
+   },
+   "Chaos spam": {
+    "name": "Chaos spam",
+    "cost": 76271.68485478398
+   },
+   "Veiled Chaos spam": {
+    "name": "Veiled Chaos spam",
+    "cost": 85135.63093540428
+   },
+   "Harvest reforges": {
+    "name": "Harvest reforges",
+    "cost": 86506.82327896234
+   },
+   "Alteration / Regal": {
+    "name": "Alteration / Regal",
+    "cost": 118995.54455306838
+   },
+   "Fossils": {
+    "name": "Fossils",
+    "cost": 67949.69803810716
+   },
+   "fosclicks": {
+    "name": "Fossils, fewest clicks",
+    "cost": 1256763.054225
+   }
+  }
+ }
+}
