@@ -1,0 +1,33 @@
+{
+  "note": "Fixed crafts for the regression test (scripts/craft_regression.mjs). targets: [mod id, lowest tier index, \"bench\" when crafted at the bench]. Mod ids are Craft of Exile's.",
+  "items": [
+    {
+      "name": "Kinetic Wand (mana, veiled chaos penetration, bench spell damage; crit multi, crit chance, attack speed)",
+      "baseId": 18,
+      "baseItem": "Kinetic Wand",
+      "ilvl": 86,
+      "targets": [
+        [1777, 11],
+        [3740, 0],
+        [2831, 2, "bench"],
+        [696, 5],
+        [1985, 5],
+        [1753, 4]
+      ]
+    },
+    {
+      "name": "Opal Wand (+1 spell gems, +1 chaos spell gems, veiled chaos damage; chaos DoT multi, DoT multi, bench cast speed)",
+      "baseId": 18,
+      "baseItem": null,
+      "ilvl": 86,
+      "targets": [
+        [1713, 0],
+        [1697, 0],
+        [3768, 0],
+        [659, 3],
+        [1701, 4],
+        [2763, 2, "bench"]
+      ]
+    }
+  ]
+}

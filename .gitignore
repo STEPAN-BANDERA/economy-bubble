@@ -1,0 +1,12 @@
+node_modules/
+.cache/
+.wrangler/
+__pycache__/
+.env
+.dev.vars
+.DS_Store
+public/data/craft/
+# poe.ninja dumps are large; only their filtered result is committed.
+*.zip
+# A local copy of GGG's patch notes, for reference while modelling; their text, not ours to publish.
+patchnotes.txt

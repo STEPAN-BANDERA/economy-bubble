@@ -1,0 +1,5 @@
+# Git hooks and other shell scripts run under sh, which breaks on Windows line endings ("\r": command
+# not found), so they keep LF even in Windows checkouts that use core.autocrlf=true.
+* text=auto
+.githooks/* text eol=lf
+*.sh text eol=lf

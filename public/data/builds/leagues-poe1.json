@@ -1,0 +1,20 @@
+{
+ "leagues": [
+  {
+   "league": "Allflame",
+   "url": "allflame",
+   "current": true,
+   "file": "meta-poe1-allflame.json",
+   "characters": 124354,
+   "built": "2026-11-11"
+  },
+  {
+   "league": "Mirage",
+   "url": "mirage",
+   "current": false,
+   "file": "meta-poe1-mirage.json",
+   "characters": 124308,
+   "built": "2026-11-11"
+  }
+ ]
+}
